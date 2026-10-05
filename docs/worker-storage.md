@@ -58,6 +58,13 @@ transactions with no garbage/active-lease overlap. The experiment stays under
 `.temp/gc-batch-check.py`. The actual D1/R2 scheduled-trigger regression is the
 delivery acceptance check, not inferred from this SQL probe.
 
+On 2026-10-05, delivery rebuilt the current Wasm artifact and reran the complete
+51-command real CLI + local Worker/D1/R2/RSA-OIDC journey after this batch change.
+The actual scheduled-trigger collector passed: deleted publisher entries remained
+unavailable and another publisher's live archive retained its independent SHA-256
+match. See `docs/e2e.md` for the integrated result. This closes the GC regression
+without rerunning unrelated platform matrices or parallel local builds.
+
 Downloads bypass the Worker Wasm heap using R2's native `response_body` stream.
 Metadata and mutable download routes use `Cache-Control: no-store`; ETag and
 `If-None-Match` compare exact SHA-256 bytes without a stale edge cache.
