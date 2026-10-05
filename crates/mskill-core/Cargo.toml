@@ -1,0 +1,15 @@
+[package]
+name = "mskill-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+fs2 = "0.4"
+mskill-protocol = { path = "../mskill-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }

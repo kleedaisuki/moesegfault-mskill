@@ -1,0 +1,82 @@
+# Rust application logic is compiled to Wasm; the generated shim only binds it.
+name = "mskill-registry"
+main = "crates/mskill-worker/build/index.js"
+compatibility_date = "2026-09-15"
+account_id = "07109e406d4e1ab7a0997dd399db6fd5"
+workers_dev = true
+routes = [{ pattern = "skills.moesegfault.dev", custom_domain = true }]
+
+[build]
+command = "node scripts/build-worker.mjs"
+
+[vars]
+ENVIRONMENT = "production"
+# Native public client registration is deployment-owned. Never accept a fallback.
+IDENTITY_ISSUER = "https://identity.moesegfault.dev"
+IDENTITY_CLIENT_ID = "UNPROVISIONED"
+LOCAL_DEV_AUTH = "false"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mskill-registry-production"
+database_id = "7e1d9474-5330-44ae-80e3-4d5258a50df0"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "SKILLS"
+bucket_name = "mskill-packages-production"
+
+[observability]
+enabled = true
+redact_query_string = true
+
+[observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+[triggers]
+# Bounded garbage collection removes superseded blobs and interrupted uploads.
+crons = ["*/10 * * * *"]
+
+# Staging has isolated storage and only trusts the staging Identity issuer/client.
+[env.staging]
+name = "mskill-registry-staging"
+workers_dev = true
+routes = [{ pattern = "skills-staging.moesegfault.dev", custom_domain = true }]
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+IDENTITY_ISSUER = "https://identity-staging.moesegfault.dev"
+IDENTITY_CLIENT_ID = "mskill-cli-staging"
+LOCAL_DEV_AUTH = "false"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "mskill-registry-staging"
+database_id = "2dcc3b29-3d18-47a1-b1fc-b52b16df4cf9"
+migrations_dir = "migrations"
+
+[[env.staging.r2_buckets]]
+binding = "SKILLS"
+bucket_name = "mskill-packages-staging"
+
+[env.staging.observability]
+enabled = true
+redact_query_string = true
+
+[env.staging.observability.logs]
+enabled = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[env.staging.observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+[env.staging.triggers]
+crons = ["*/10 * * * *"]

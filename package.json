@@ -1,0 +1,15 @@
+{
+  "name": "mskill-development",
+  "private": true,
+  "scripts": {
+    "build:worker": "node scripts/build-worker.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.130.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

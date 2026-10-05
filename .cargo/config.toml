@@ -1,0 +1,4 @@
+# Keep build artifacts inside the repository and bound developer-machine CPU use.
+[build]
+target-dir = ".cache/target"
+jobs = 2

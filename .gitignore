@@ -1,0 +1,15 @@
+# Build outputs and task-local experiment artifacts.
+/target/
+/.cache/
+/.temp/
+**/node_modules/
+**/.wrangler/
+**/build/
+**/.dev.vars
+**/.env
+*.log
+# Editor and operating system metadata.
+.DS_Store
+Thumbs.db
+/.vscode/
+/.idea/

@@ -1,0 +1,29 @@
+[package]
+name = "mskill-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Local and cloud skill package management"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "mskill"
+path = "src/main.rs"
+
+[features]
+e2e-test-store = ["mskill-auth/e2e-test-store"]
+
+[dependencies]
+anyhow = "1"
+anstream = "0.6"
+clap = { version = "4", features = ["derive", "env"] }
+dirs = "6"
+mskill-auth = { path = "../mskill-auth" }
+mskill-core = { path = "../mskill-core" }
+mskill-protocol = { path = "../mskill-protocol" }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+uuid = { version = "1", features = ["v4"] }
