@@ -229,3 +229,14 @@ The applicable research lesson is to state the experiment level and uncertainty,
 not treat five process samples on one build/machine as general confidence bounds.
 No speculative new compression or storage research is needed to remove repeated
 work on already validated immutable bytes.
+
+## Downloaded optimized release startup
+
+After publishing v0.1.0, a fresh download of the Windows x86_64 release was
+measured with 15 fresh process invocations of `mskill --help`. Median elapsed
+process time was 10.95 ms, with observed values 10.37–14.46 ms. The filesystem
+cache was warm, this was one Windows machine, and no cold-boot or production
+p99 claim is made. The earlier debug measurements above are a different build
+and checkpoint, not a controlled attribution of an architectural startup gain.
+Raw samples and the small subprocess measurement are preserved in
+`.temp/release-acceptance/startup-results.json` and `startup.mjs`.

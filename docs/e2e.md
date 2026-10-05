@@ -191,3 +191,23 @@ An independent post-run check then read the actual installed files in the remote
 
 The final run also observed one real mock-provider refresh, three revocations, nine trace IDs with Worker-log correlation, scheduled cleanup preserving the live package and keeping the deleted pointer absent, and concurrent writes `[200, 200]` resolving to intact latest archive bytes. No `publish_conflict` 409 was forced by the scheduler; the digest-bound stale-download 409 path is covered. This supersedes the earlier alias-capable fixture counts without rewriting their historical outcomes.
 
+
+## Final maintained packages after standards and license closure
+
+The final actual-staging refresh imported and published both maintained source
+directories, including the declared GPL-3.0-only license and full LICENSE file.
+A separate anonymous CLI home pulled them and compared every authored file plus
+canonical SHA-256. Genuine provider login preceded publication; logout removed
+the vault session and subsequent whoami was denied. No production QA account
+was created. This supersedes earlier historical publication hashes above.
+
+| Final staging package | SHA-256 |
+| --- | --- |
+| `u_069702e621ba31f684a5e97e2e085b59/mskill-use` | `ce05dc0ebc1ee17a383b060cf326b93c2723e96822b79b586b92ad0a5f713016` |
+| `u_069702e621ba31f684a5e97e2e085b59/mskill-publish` | `50874358478c0348015483098292377a2c689349ef07044692294108511ed086` |
+
+Safe result: `.temp/final-integration/published-skills.json`. Final native
+acceptance is 17 unit tests and one doctest, 26 actual local CLI commands, and
+54 actual full Worker/OIDC/D1/R2 CLI commands. Both Linux and Windows Actions
+gates and the full Worker gate passed at the production promotion checkpoint.
+Production served-resource checks and deployment outcomes are in `delivery.md`.

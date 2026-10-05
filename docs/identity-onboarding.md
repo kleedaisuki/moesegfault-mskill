@@ -187,8 +187,10 @@ source paths in the adjacent Identity checkout:
 - `D:/Code/moesegfault-indentity/migrations/environments/production/0013_oauth_client_mskill-cli.sql`
 
 Both were applied through prepared environment streams, not standalone partial
-SQL writes. They remain uncommitted in that separate checkout; the Identity owner
-must incorporate them into reviewed forward-only history. Do not regenerate and
+SQL writes. They are retained in the adjacent Identity checkout by atomic commit
+`7f1d4e1` on its existing branch. That branch was not pushed or deployed because
+it also belongs to separate Identity work; its owner can incorporate this focused
+registration commit into upstream forward-only history. Do not regenerate and
 reapply the create-only SQL under a new filename or delete applied migration
 history. mskill's checked-in `deploy/` copies are non-secret handoff artifacts,
 not the authoritative Identity migration stream.

@@ -277,3 +277,66 @@ Production deployment is restricted to main and still consumes the tested artifa
 Release packages include upstream dependency license notices; maintained .skill
 packages declare the repository license and bundle its full text.
 
+
+## Production launch acceptance (2026-10-05)
+
+The approved production native client `mskill-cli` is enabled on the production
+Identity issuer. Its configuration source is retained in adjacent Identity
+commit `7f1d4e1`; no Identity code deployment or production test account was
+needed. The normal mskill command now selects this registered client only for
+the exact official production issuer and registry pair.
+
+[Production Actions run 37284946136](https://github.com/kleedaisuki/moesegfault-mskill/actions/runs/37284946136)
+promoted the tested Worker from source `20e0bea` after both native gates and the
+54-command Worker/OIDC/D1/R2 journey passed. No Worker rebuild ran in deployment.
+Cloudflare registered `skills.moesegfault.dev`, deployed production version
+`3f3b768e-01f8-44f3-a4a9-8b03cf544d1e`, and reported 4 ms startup.
+
+The first public smoke failed with DNS ENOTFOUND immediately after the custom
+domain was created. Independent public smoke passed after propagation; rerunning
+only the failed deployment job then passed. The native and Worker jobs were not
+repeated. Commit `5ec2b61` adds bounded retries for transient reachability and
+502/503/504 responses, without retrying contract assertions. Four injected
+scenarios cover DNS recovery, gateway recovery, retry exhaustion, and immediate
+contract failure. Stable deployments incur no extra wait.
+
+Independent production checks passed health/catalog HTTP 200 with incoming
+trace correlation, anonymous management HTTP 401, and actual CLI anonymous cloud
+listing. Website, same-origin JS/CSS, privacy, and terms returned HTTP 200 with
+security headers; served JavaScript parsed successfully. These are served-resource
+checks, not rendered clipboard/search/mobile interaction acceptance. Production
+contains no staging QA publication or account data.
+
+The `v0.1.0` tag selects the tested client source plus the smoke-only fix.
+Its release workflow was explicitly dispatched against the tag: `[skip ci]` in
+the preceding smoke commit intentionally suppressed redundant push checks and
+also suppressed the automatic tag-triggered workflow. Manual tag dispatch still
+runs all three optimized-binary journeys and the tag-only release publisher.
+
+## Published native release acceptance
+
+[Release v0.1.0](https://github.com/kleedaisuki/moesegfault-mskill/releases/tag/v0.1.0)
+was published by [Actions run 37285564929](https://github.com/kleedaisuki/moesegfault-mskill/actions/runs/37285564929)
+from tag `v0.1.0` (`5ec2b61`) on 2026-10-05. All optimized native binaries passed
+the real 26-command local journey before packaging; no release build ran on the
+developer machine.
+
+| Release job | Result | Duration | Download archive bytes |
+| --- | --- | --- | --- |
+| Linux x86_64 | Passed | 2m 10s | 3,343,611 |
+| Windows x86_64 | Passed | 2m 49s | 2,946,871 |
+| macOS ARM64 | Passed | 2m 29s | 2,772,509 |
+| Publish | Passed | 12s | Three archives and three external checksum files |
+
+Independent post-publication downloads of all three archives matched their
+external SHA-256 files. Each archive contained exactly its native binary,
+application LICENSE, and upstream THIRD-PARTY-NOTICES.txt. License text matched
+the release tag after line-ending normalization; notices retained dependency
+license/copyright texts. Matching source archives are available on the release.
+
+The actual downloaded Windows binary reported `mskill 0.1.0`, accessed production
+anonymous cloud listing with default configuration, and passed the 26-command
+local journey again. All download checks and their reproducible verifier are in
+`.temp/release-acceptance`; no binaries or generated notices were committed.
+Public release notes provide installation, local and cloud examples, and the
+latest-only/snapshot/link behavior without internal validation chatter.
