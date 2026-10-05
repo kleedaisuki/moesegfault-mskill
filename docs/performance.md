@@ -240,3 +240,64 @@ p99 claim is made. The earlier debug measurements above are a different build
 and checkpoint, not a controlled attribution of an architectural startup gain.
 Raw samples and the small subprocess measurement are preserved in
 `.temp/release-acceptance/startup-results.json` and `startup.mjs`.
+
+## Full shipped-release workload follow-up (2026-10-05)
+
+In response to the user asking about performance, the existing bounded benchmark
+was run against the actual downloaded Windows v0.1.0 executable, without a
+rebuild or server load test:
+
+```powershell
+node scripts/bench.mjs --phase release-v010 --cli .temp/release-acceptance/windows/mskill.exe --samples 5
+```
+
+Same fixture generator and independent file/digest checks as the earlier runs;
+15 startup/list samples, five archive-operation samples, one unrecorded warm-up,
+and warm OS cache. The executable is 6,817,280 bytes with SHA-256
+`ac156815c0265d97771cdaa395da2cfc5a3ed630db02a2f8f50e0fab0c4092cd`.
+This follow-up measures the shipped version; it is not a controlled comparison
+against earlier debug or release startup runs.
+
+| Actual shipped Windows operation | Median ms |
+| --- | ---: |
+| Help process startup | 26.7 |
+| Empty library list | 27.7 |
+| One-skill library list | 30.0 |
+| Typical 25-file, 98,397-byte pack | 41.4 |
+| Typical fresh archive import | 56.0 |
+| Typical unchanged archive import | 32.0 |
+| 768-file, 1,570,915-byte pack | 270.5 |
+| 768-file fresh archive import | 393.8 |
+| 768-file unchanged archive import | 35.9 |
+| 6 MiB compressible pack | 48.1 |
+| 6 MiB compressible fresh import | 47.6 |
+| 6 MiB compressible unchanged import | 28.8 |
+| 6 MiB compressible directory add | 73.3 |
+| 6 MiB difficult-to-compress pack | 197.0 |
+| 6 MiB difficult-to-compress fresh import | 57.8 |
+| 6 MiB difficult-to-compress unchanged import | 34.7 |
+
+The startup median differs from the earlier 10.95 ms observation on the same
+binary. A small interleaved launcher probe found synchronous and asynchronous
+Node launch medians 25.7 and 24.7 ms in the current measurement period; this does
+not support attributing the difference to launcher style. Machine/process state
+is uncontrolled and the cause is not established. Describe startup as roughly
+ten to thirty milliseconds in these observations, not a fixed 11 ms guarantee
+or a code-regression claim. Preserve both observations.
+
+Actual production read observations were limited to three requests per endpoint:
+`/health` 1162.0, 550.2, 533.1 ms; `/v1/skills` 295.9, 288.1, 310.7 ms. These
+include client networking and response draining; the production catalog was
+empty. They do not establish populated-catalog scalability, server CPU, D1/R2
+latency, publication throughput, or p99. The earlier production deployment's
+4 ms Worker startup remains a separate platform metric.
+
+Interpretation: ordinary local operations are in the tens of milliseconds;
+many-file first extraction remains the slowest measured shipped local path,
+while a same-content import is near process overhead. No further production
+code optimization was introduced for this question. A useful next experiment,
+if needed, is shipped-release first extraction/copy with 4096 small entries
+and explicit local filesystem activity measurements, not a new compression
+algorithm or cache based only on network wall time.
+
+Raw results and small probes: `.temp/performance/release-v010/`.
