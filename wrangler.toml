@@ -13,7 +13,7 @@ command = "node scripts/build-worker.mjs"
 ENVIRONMENT = "production"
 # Native public client registration is deployment-owned. Never accept a fallback.
 IDENTITY_ISSUER = "https://identity.moesegfault.dev"
-IDENTITY_CLIENT_ID = "UNPROVISIONED"
+IDENTITY_CLIENT_ID = "mskill-cli"
 LOCAL_DEV_AUTH = "false"
 
 [[d1_databases]]

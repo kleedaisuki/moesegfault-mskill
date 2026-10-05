@@ -20,15 +20,21 @@ background executor pool.
 | `link SKILL` | Installed identity | Managed project live link |
 | `publish SKILL` | Installed archive and signed-in account | Mapped account's cloud identity |
 | `whoami` | Signed-in account | None; displays the mapped publisher owner |
-| `remove ALIAS` | Managed project alias | Project install only |
+| `remove NAME` | Managed installed directory name | Project install only |
 | `remove SKILL --scope local` | Installed identity | Local archive/tree/metadata only |
 | `remove owner/name --scope cloud` | Public identity and account | Latest cloud state only |
 
 An abbreviated name means exactly `local/name`, never a guessed publisher or the
 first search result. Public operations require `owner/name`. Publishing obtains
 `/v1/me` and uses that account's immutable owner with the archive manifest's name.
-Different accounts may publish the same manifest name. The project default is
-that manifest name; a conflicting publisher requires an unused `--alias`.
+Different accounts may publish the same manifest name. Project installs always
+use that manifest name as the directory basename, as required by the
+[Agent Skills specification](https://agentskills.io/specification). The `--alias`
+flag remains parseable for compatibility but must equal the canonical name; it
+cannot rename a project directory or rewrite a manifest. A conflicting publisher
+requires a separate project, or explicit removal of the existing managed install
+before attaching the other package. Both packages can coexist in their respective
+local/cloud namespaces.
 
 Updating a local source is separate from downloading published state: `--from`
 requires an installed local identity. The archive's manifest name must match
@@ -81,9 +87,13 @@ response bodies. Trace context follows
 
 `mskill-auth` owns browser callback, PKCE, verified token refresh and platform
 credential storage. Registry client code receives a token only for profile,
-publish and delete operations. The issuer/client registration is explicit until a
-production native client is provisioned; development client IDs are not silently
-substituted for production. `login --no-browser` retains the browser authorization
+publish and delete operations. The production native client `mskill-cli` is
+registered and enabled; it defaults only when the selected registry and issuer
+are the exact official pair (harmless trailing slashes are normalized). Client
+IDs remain optional in the parser, so explicit environment/flag overrides are
+distinguishable without additional parser state. Changing the registry or issuer
+requires an explicit client ID, preventing official credentials from silently
+following a new origin. `login --no-browser` retains the browser authorization
 workflow but prints its URL for a user or controlled local simulation.
 
 The `e2e-test-store` feature is not a release feature. Its credential file is

@@ -159,3 +159,75 @@ validated; registry account mapping uses the real provider-issued identity,
 not the QA actor cookie jar. Private QA artifacts were restricted to the current
 Windows account using repository-local ACLs.
 
+
+## Production client registration (2026-10-05)
+
+After explicit user approval and root review, the single reviewed
+`deploy/0013_oauth_client_mskill-cli.sql` was copied to Identity's production-only
+overlay and composed through its normal production migration stream. Remote
+listing contained only this new migration. Wrangler applied it to
+`moesegfault-identity-production` (`b3f4a7dd-4415-417d-a1eb-47c36a47ad24`).
+Readback confirmed `mskill-cli` enabled, native/none, sector
+`skills.moesegfault.dev`, loopback `http://127.0.0.1/callback` with
+`native_loopback_any_port`, and exactly openid/offline_access. No account data
+was created or tested in production, and no unrelated migration was applied.
+
+The production CLI default pairs `DEFAULT_ISSUER` with `DEFAULT_CLIENT_ID`.
+Custom/staging issuers require an explicit client ID; defaults must never silently
+cross environments. Production and staging overlay files remain forward-only
+history in the adjacent Identity checkout and should be retained by its deployment
+owner. Registration SQL does not require changing or redeploying Identity code.
+
+## External migration history handoff
+
+The generated public artifacts in this repository mirror these deployment-owned
+source paths in the adjacent Identity checkout:
+
+- `D:/Code/moesegfault-indentity/migrations/environments/staging/0012_oauth_client_mskill-cli-staging.sql`
+- `D:/Code/moesegfault-indentity/migrations/environments/production/0013_oauth_client_mskill-cli.sql`
+
+Both were applied through prepared environment streams, not standalone partial
+SQL writes. They remain uncommitted in that separate checkout; the Identity owner
+must incorporate them into reviewed forward-only history. Do not regenerate and
+reapply the create-only SQL under a new filename or delete applied migration
+history. mskill's checked-in `deploy/` copies are non-secret handoff artifacts,
+not the authoritative Identity migration stream.
+
+## Completed real lifecycle and registry journey
+
+The delivery owner completed 20 actual staging CLI CRUD commands and 12 maintained
+skill-publication/anonymous byte-check/logout commands against the deployed
+Worker, using this real native vault session. Natural provider refresh at
+2026-10-05 15:20 Asia/Singapore completed discovery, token rotation and JWKS
+validation before a successful registry request. Application logout then received
+Identity revocation HTTP 200; subsequent whoami and publish were denied without
+credentials. Details and sanitized phase timings are in `docs/e2e.md` and private
+`.temp/staging-journey/` artifacts. No production account or test publication was
+created by this acceptance journey.
+
+## Final maintained-skill refresh
+
+After production login defaults and maintained documentation were finalized,
+`mskill-publish` changed canonical SHA to
+`e752a6676ee1693c5294d470b73061aecf6c443756cc5c68bbb79d759673da1b`.
+The staging QA actor reauthenticated through the genuine provider; the final
+maintained packages were fetched by a separate anonymous CLI home and every
+source file matched final repository bytes. `mskill-use` remained at
+`0db34852e1daae6a751899033efeca8dac3350d4fd5c070469081c832696c3de`.
+The helper also issued an unnecessary same-digest publish for `mskill-use`;
+its archive content did not change. The helper was corrected to publish only
+changed digests on subsequent runs, without replaying this completed journey.
+Final logout received provider revocation HTTP 200; whoami and publish then
+failed as signed-out, while anonymous listing retained the maintained packages.
+Private safe result: `.temp/staging-journey/final-maintained-results.json`.
+
+### Final user-copy correction
+
+A final actionable-copy edit changed only `mskill-publish`. Its current staging
+archive SHA is `d94c83e1c6af2300b26365e59567394af5d92b6f6acf9118fca251872dc016f7`.
+A narrow real-staging refresh published only that package; the anonymous reader
+verified every current source file and the archive hash. `mskill-use` was not
+republished and its remote digest stayed unchanged. Eight CLI operations plus
+one genuine native grant completed, followed by revocation HTTP 200 and a
+signed-out whoami denial. Safe result:
+`.temp/staging-journey/copy-refresh-results.json`.

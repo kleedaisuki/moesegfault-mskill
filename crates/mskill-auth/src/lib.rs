@@ -19,6 +19,9 @@ use url::Url;
 
 /// Production issuer verified against deployed discovery.
 pub const DEFAULT_ISSUER: &str = "https://identity.moesegfault.dev";
+/// Production native client provisioned and verified in Identity's production D1.
+/// Non-production issuers must supply their own registered client ID explicitly.
+pub const DEFAULT_CLIENT_ID: &str = "mskill-cli";
 /// Requires Identity's registered native-loopback variable-port match mode.
 pub const DEFAULT_REDIRECT_URI: &str = "http://127.0.0.1:0/callback";
 
@@ -45,45 +48,75 @@ pub struct SessionInfo {
 }
 
 #[derive(Serialize, Deserialize)]
+/// One atomically replaced platform-vault record; rotating tokens never span separate entries.
 struct Credentials {
+    /// Verified, non-secret account and expiry metadata.
     info: SessionInfo,
+    /// Bearer authorization for the registered client's resource service.
     access_token: String,
+    /// Single current refresh-family member; predecessor reuse is forbidden.
     refresh_token: Option<String>,
+    /// Verified ID token retained for the session lifecycle, never used as an API bearer.
     id_token: String,
 }
 #[derive(Deserialize)]
+/// Issuer-bound endpoints; every endpoint origin is checked before use.
 struct Discovery {
+    /// Exact configured authority, not a token-derived authority.
     issuer: String,
+    /// Native system-browser authorization entry.
     authorization_endpoint: String,
+    /// Public-client code exchange and rotation endpoint.
     token_endpoint: String,
+    /// Provider-owned signing key set.
     jwks_uri: String,
+    /// Refresh-family revocation endpoint.
     revocation_endpoint: String,
 }
 #[derive(Deserialize)]
+/// Token response kept private until signature, subject and storage checks complete.
 struct TokenSet {
+    /// Access JWT, validated separately from the ID token.
     access_token: String,
+    /// Replacement refresh token when offline access was granted.
     refresh_token: Option<String>,
+    /// Required at login; optional in a rotation response.
     id_token: Option<String>,
+    /// Must be bearer, independently of JWT token-kind claims.
     token_type: String,
 }
 #[derive(Clone, Deserialize)]
+/// Identity's current signed-token claim contract; JOSE validates registered claims first.
 struct Claims {
+    /// Exact issuer.
     iss: String,
+    /// Nonempty pairwise subject.
     sub: String,
+    /// Exactly the provisioned client ID; multi-audience tokens are not this provider contract.
     aud: String,
+    /// Unix expiry checked by JOSE.
     exp: u64,
+    /// Unix issuance time bounded against local clock skew.
     iat: u64,
+    /// Explicit access/id discriminator; headers alone do not establish token kind.
     token_use: String,
+    /// Login transaction nonce for ID-token binding.
     nonce: Option<String>,
+    /// Whitespace-delimited access authorization scopes.
     scope: Option<String>,
 }
 
 /// Native auth client. Tokens live in the OS credential vault, never `~/.mskill` files.
 pub struct AuthClient {
+    /// Environment-paired public client trust boundary.
     config: AuthConfig,
+    /// Bounded, redirect-disabled network transport.
     http: reqwest::Client,
+    /// Cross-process serialization aligned with the vault's canonical-home selector.
     lock_path: PathBuf,
+    /// Optional command-level W3C trace identity shared with registry calls.
     trace_id: Option<String>,
+    /// Enables only sanitized phase diagnostics.
     verbose: bool,
 }
 

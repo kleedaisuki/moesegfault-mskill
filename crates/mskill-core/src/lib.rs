@@ -289,6 +289,7 @@ impl LocalStore {
         remove_path(&metadata)
     }
     /// Materialize an independent project copy; refuse unmanaged destinations.
+    /// A supplied alias must equal the manifest name to preserve Agent Skills layout.
     pub fn clone_to_project(
         &self,
         project: &Path,
@@ -298,6 +299,7 @@ impl LocalStore {
         self.attach(project, id, alias, false)
     }
     /// Link to the stable library tree; Windows may require Developer Mode or elevation.
+    /// A supplied alias must equal the manifest name, never rename the installed skill.
     pub fn link_to_project(
         &self,
         project: &Path,
@@ -313,14 +315,20 @@ impl LocalStore {
         alias: Option<&str>,
         linked: bool,
     ) -> Result<PathBuf> {
+        validate_id(id)?;
+        let alias = alias.unwrap_or(&id.name);
+        ensure!(
+            alias == id.name,
+            "project directory name must match SKILL.md name '{}'; omit --alias or use --alias {}",
+            id.name,
+            id.name
+        );
         let _lock = self.lock()?;
         self.recover_install()?;
         let info = self.get_inner(id)?;
         let root = project.join(".agents/skills");
         fs::create_dir_all(&root)?;
         let _project_lock = project_lock(&root)?;
-        let alias = alias.unwrap_or(&id.name);
-        mskill_protocol::validate_skill_name(alias)?;
         let path = root.join(alias);
         let manifest_path = root.join(".mskill.json");
         let mut manifest = read_manifest(&manifest_path)?;
@@ -329,11 +337,11 @@ impl LocalStore {
                 .entries
                 .get(alias)
                 .is_none_or(|entry| entry.id == *id),
-            "another publisher owns this project alias; choose --alias"
+            "another publisher owns this project's skill name; use another project or explicitly remove the existing managed install first"
         );
         ensure!(
             fs::symlink_metadata(&path).is_err() || manifest.entries.contains_key(alias),
-            "destination is unmanaged; choose another alias"
+            "destination is unmanaged; preserve it and use another project, or explicitly move/remove it outside mskill"
         );
         let stage = root.join(".mskill-stage");
         remove_path(&stage)?;
@@ -356,7 +364,7 @@ impl LocalStore {
         write_json(&manifest_path, &manifest)?;
         Ok(path)
     }
-    /// Remove a managed project alias without following its symbolic link.
+    /// Remove a managed project directory without following its symbolic link.
     pub fn remove_project(&self, project: &Path, alias: &str) -> Result<()> {
         mskill_protocol::validate_skill_name(alias)?;
         let root = project.join(".agents/skills");
@@ -822,18 +830,35 @@ mod tests {
         let cloud = SkillId::new("publisher_123", "demo")?;
         store.install_bytes(&cloud, &store.read_archive(&first.id)?)?;
         assert!(store.clone_to_project(&project, &cloud, None).is_err());
-        store.clone_to_project(&project, &cloud, Some("cloud-demo"))?;
-        let unmanaged = project.join(".agents/skills/unmanaged");
+        let cloud_project = root.join("cloud-project");
+        assert!(store
+            .clone_to_project(&cloud_project, &cloud, Some("cloud-demo"))
+            .is_err());
+        assert!(store
+            .link_to_project(&cloud_project, &cloud, Some("cloud-demo"))
+            .is_err());
+        assert!(
+            !cloud_project.exists(),
+            "invalid aliases must not mutate the project"
+        );
+        let cloud_dest = store.clone_to_project(&cloud_project, &cloud, Some("demo"))?;
+        assert_eq!(
+            cloud_dest.file_name().and_then(|name| name.to_str()),
+            Some("demo")
+        );
+        let unmanaged_project = root.join("unmanaged-project");
+        let unmanaged = unmanaged_project.join(".agents/skills/demo");
         fs::create_dir_all(&unmanaged)?;
         assert!(store
-            .clone_to_project(&project, &cloud, Some("unmanaged"))
+            .clone_to_project(&unmanaged_project, &cloud, None)
             .is_err());
-        assert!(store.remove_project(&project, "unmanaged").is_err());
+        assert!(store.remove_project(&unmanaged_project, "demo").is_err());
+        assert!(unmanaged.is_dir());
         store.remove_project(&project, "demo")?;
         assert!(!dest.exists());
         store.remove_local(&first.id)?;
         assert!(store.get(&first.id).is_err());
-        assert!(project.join(".agents/skills/cloud-demo/SKILL.md").exists());
+        assert!(cloud_dest.join("SKILL.md").exists());
         remove_path(&root)
     }
 

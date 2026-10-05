@@ -53,8 +53,8 @@ The CLI/core implementation owns the exact persisted schema. Its invariants are:
    or links. Removal must not delete unrelated skills. Replacing an existing
    unowned/modified project directory requires an explicit user choice.
 6. A project's standard layout is name-only. If two local identities share the
-   same name, reject an ambiguous project install; require explicit replacement
-   or a deliberate local alias, never silently overwrite another publisher.
+   same name, reject an ambiguous project install; use another project or explicitly remove the previous managed install before
+   selecting another publisher. Project directory names equal manifest names.
 7. Local removal can break project links and must make this effect clear to the
    user. There is no global cross-project link registry. Cloud deletion never
    deletes local copies automatically.

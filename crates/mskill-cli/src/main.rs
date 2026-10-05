@@ -5,7 +5,9 @@ mod output;
 use anyhow::{bail, ensure, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use http::Registry;
-use mskill_auth::{AuthClient, AuthConfig, DEFAULT_ISSUER, DEFAULT_REDIRECT_URI};
+use mskill_auth::{
+    AuthClient, AuthConfig, DEFAULT_CLIENT_ID, DEFAULT_ISSUER, DEFAULT_REDIRECT_URI,
+};
 use mskill_core::{LocalStore, SkillInfo};
 use mskill_protocol::{sha256_hex, SkillId, SkillMetadata, LOCAL_OWNER};
 use output::Output;
@@ -15,6 +17,9 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
 };
+
+/// Official registry paired with the registered production Identity client.
+const DEFAULT_REGISTRY: &str = "https://skills.moesegfault.dev";
 
 /// Local skill library and cloud distribution CLI.
 #[derive(Parser)]
@@ -28,7 +33,7 @@ struct Cli {
         long,
         global = true,
         env = "MSKILL_REGISTRY",
-        default_value = "https://skills.moesegfault.dev"
+        default_value = DEFAULT_REGISTRY
     )]
     registry: String,
     /// Output JSON instead of human-readable messages.
@@ -37,7 +42,7 @@ struct Cli {
     /// Display token-free network diagnostics and request trace IDs.
     #[arg(long, global = true)]
     verbose: bool,
-    /// Registered native moeSegFault Identity client ID.
+    /// Native Identity client ID; defaults to mskill-cli for the official service only.
     #[arg(long, global = true, env = "MSKILL_OIDC_CLIENT_ID")]
     client_id: Option<String>,
     /// Account issuer; HTTP is allowed only on loopback.
@@ -122,7 +127,7 @@ enum Command {
         /// Project root (defaults to the current working directory).
         #[arg(long)]
         project: Option<PathBuf>,
-        /// Alternative directory name when the project already uses this name.
+        /// Compatibility option; when supplied, must equal the skill's canonical name.
         #[arg(long)]
         alias: Option<String>,
     },
@@ -133,13 +138,13 @@ enum Command {
         /// Project root (defaults to the current working directory).
         #[arg(long)]
         project: Option<PathBuf>,
-        /// Alternative directory name when the project already uses this name.
+        /// Compatibility option; when supplied, must equal the skill's canonical name.
         #[arg(long)]
         alias: Option<String>,
     },
     /// Remove a managed project install, local package, or published cloud skill.
     Remove {
-        /// Project directory alias; or a skill identity for local/cloud scope.
+        /// Installed project directory name; or a skill identity for local/cloud scope.
         skill: String,
         /// Storage layer to remove; cloud removal requires account sign-in.
         #[arg(long, value_enum, default_value_t = Scope::Project)]
@@ -514,18 +519,30 @@ fn cloud_id(reference: &str) -> Result<SkillId> {
 
 /// Authentication is constructed only for commands requiring account access.
 fn auth(cli: &Cli, home: &Path) -> Result<AuthClient> {
-    let client_id = cli.client_id.clone().filter(|s| !s.is_empty()).context(
-        "account client ID is not configured; set MSKILL_OIDC_CLIENT_ID or use --client-id",
-    )?;
-    AuthClient::new(
-        AuthConfig {
-            issuer: cli.issuer.clone(),
-            client_id,
-            redirect_uri: cli.redirect_uri.clone(),
+    AuthClient::new(auth_config(cli)?, home)?.with_trace_context(&cli.trace_id, cli.verbose)
+}
+
+/// Apply official defaults only to the official service pair, never a new origin.
+fn auth_config(cli: &Cli) -> Result<AuthConfig> {
+    let official_issuer = cli.issuer.trim_end_matches('/') == DEFAULT_ISSUER;
+    let official_registry = cli.registry.trim_end_matches('/') == DEFAULT_REGISTRY;
+    let client_id = match &cli.client_id {
+        Some(value) => {
+            ensure!(!value.trim().is_empty(), "account client ID cannot be empty");
+            value.clone()
+        }
+        None if official_issuer && official_registry => DEFAULT_CLIENT_ID.to_owned(),
+        None => bail!("a custom registry or Identity issuer requires an explicit client ID; set MSKILL_OIDC_CLIENT_ID or use --client-id"),
+    };
+    Ok(AuthConfig {
+        issuer: if official_issuer {
+            DEFAULT_ISSUER.to_owned()
+        } else {
+            cli.issuer.clone()
         },
-        home,
-    )?
-    .with_trace_context(&cli.trace_id, cli.verbose)
+        client_id,
+        redirect_uri: cli.redirect_uri.clone(),
+    })
 }
 
 /// Preserve explicit roots and obtain the current directory only when needed.
@@ -589,9 +606,81 @@ mod tests {
         assert!(Cli::try_parse_from(["mskill", "update", "--from", "skill-dir"]).is_err());
         assert!(Cli::try_parse_from(["mskill", "pack", "skill-dir"]).is_err());
         assert!(Cli::try_parse_from(["mskill", "pack", "skill-dir", "-o", "x.skill"]).is_ok());
+        assert!(Cli::try_parse_from([
+            "mskill",
+            "clone",
+            "owner/rust-review",
+            "--alias",
+            "rust-review"
+        ])
+        .is_ok());
+        // Keep the old flag parseable; core rejects noncanonical names before mutation.
         assert!(
-            Cli::try_parse_from(["mskill", "clone", "owner/rust-review", "--alias", "review"])
+            Cli::try_parse_from(["mskill", "link", "owner/rust-review", "--alias", "review"])
                 .is_ok()
         );
+    }
+
+    /// Official credentials cannot silently follow a registry or issuer override.
+    #[test]
+    fn authentication_defaults_stay_with_official_service() {
+        let mut official = Cli::try_parse_from([
+            "mskill",
+            "--registry",
+            DEFAULT_REGISTRY,
+            "--issuer",
+            DEFAULT_ISSUER,
+            "login",
+        ])
+        .unwrap();
+        // Isolate config semantics from a developer's inherited client-ID environment.
+        official.client_id = None;
+        assert_eq!(auth_config(&official).unwrap().client_id, DEFAULT_CLIENT_ID);
+        let mut trailing_slash = Cli::try_parse_from([
+            "mskill",
+            "--registry",
+            "https://skills.moesegfault.dev/",
+            "--issuer",
+            "https://identity.moesegfault.dev/",
+            "login",
+        ])
+        .unwrap();
+        trailing_slash.client_id = None;
+        let config = auth_config(&trailing_slash).unwrap();
+        assert_eq!(config.client_id, DEFAULT_CLIENT_ID);
+        assert_eq!(config.issuer, DEFAULT_ISSUER);
+        let mut custom_registry =
+            Cli::try_parse_from(["mskill", "--registry", "https://custom.example", "login"])
+                .unwrap();
+        custom_registry.client_id = None;
+        assert!(auth_config(&custom_registry).is_err());
+        let mut staging = Cli::try_parse_from([
+            "mskill",
+            "--registry",
+            "https://skills-staging.moesegfault.dev",
+            "--issuer",
+            "https://identity-staging.moesegfault.dev",
+            "login",
+        ])
+        .unwrap();
+        staging.client_id = None;
+        assert!(auth_config(&staging).is_err());
+        let explicit = Cli::try_parse_from([
+            "mskill",
+            "--registry",
+            "https://skills-staging.moesegfault.dev",
+            "--issuer",
+            "https://identity-staging.moesegfault.dev",
+            "--client-id",
+            "mskill-cli-staging",
+            "login",
+        ])
+        .unwrap();
+        assert_eq!(
+            auth_config(&explicit).unwrap().client_id,
+            "mskill-cli-staging"
+        );
+        let empty = Cli::try_parse_from(["mskill", "--client-id", "", "login"]).unwrap();
+        assert!(auth_config(&empty).is_err());
     }
 }

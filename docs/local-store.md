@@ -48,10 +48,15 @@ trusted from persisted JSON, allowing a library to move between machines.
 
 ## Project semantics
 
-Project destination defaults to `.agents/skills/<name>` for every publisher.
-`.agents/skills/.mskill.json` maps project aliases to publisher identity, digest and
-copy/link mode. A different publisher using the same alias is refused with advice
-to use `--alias`. Existing unmanaged paths are never overwritten or removed.
+Project destination is `.agents/skills/<name>` for every publisher. Directory names
+must match the root `SKILL.md` name under the
+[Agent Skills specification](https://agentskills.io/specification); `--alias` remains
+accepted by the API/CLI but must equal that canonical name, before project mutation.
+No manifest rewriting or alias view is introduced.
+`.agents/skills/.mskill.json` maps installed names to publisher identity, digest and
+copy/link mode. A different publisher using the same name is refused: use another
+project, or explicitly remove the existing managed install before attaching the other.
+Existing unmanaged paths are never overwritten or removed.
 A project-specific OS lock serializes mutations even between different local stores.
 Copies remain unchanged until explicitly refreshed and survive local deletion.
 Links follow the stable library path and see updates; local deletion leaves them
@@ -68,7 +73,8 @@ clone refresh overwrites their content; authors should edit library source inste
 ## Focused verification
 
 Core unit scenarios cover portable path/frontmatter rejection, unchanged imports,
-latest replacement, independent copies, refresh, namespace collisions, aliases,
+latest replacement, independent copies, refresh, namespace collisions, canonical
+name enforcement before mutation, explicit canonical alias compatibility,
 unmanaged-path protection, local/project removal and simulated interrupted-install
 rollback. Test files live under repository `.temp`. CLI integration owns actual
 command execution and cross-platform link testing; this module does not equate unit
