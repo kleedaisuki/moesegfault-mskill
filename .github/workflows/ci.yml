@@ -29,16 +29,30 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Deploy the staging registry after tests
+        description: Deploy the selected registry after tests
         type: boolean
         default: false
+      environment:
+        description: Deployment environment (main pushes always use staging)
+        type: choice
+        options: [staging, production]
+        default: staging
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Never let a newer check or staging run interrupt a production deployment.
+  group: >-
+    ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+    (github.event_name == 'workflow_dispatch' && inputs.deploy &&
+    (inputs.environment != 'production' || github.ref == 'refs/heads/main'))) &&
+    format('ci-deploy-{0}', inputs.environment || 'staging') ||
+    format('ci-checks-{0}', github.ref) }}
+  cancel-in-progress: >-
+    ${{ !((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+    (github.event_name == 'workflow_dispatch' && inputs.deploy &&
+    (inputs.environment != 'production' || github.ref == 'refs/heads/main'))) }}
 
 env:
   CARGO_BUILD_JOBS: 2
@@ -152,17 +166,20 @@ jobs:
     needs: [native, worker]
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.deploy)
+      (github.event_name == 'workflow_dispatch' && inputs.deploy &&
+      (inputs.environment != 'production' || github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    environment: staging
+    environment: ${{ inputs.environment || 'staging' }}
     concurrency:
-      group: mskill-staging-deploy
+      group: mskill-${{ inputs.environment || 'staging' }}-deploy
       cancel-in-progress: false
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       MSKILL_SKIP_BUILD: 1
+      DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+      REGISTRY_ORIGIN: ${{ inputs.environment == 'production' && 'https://skills.moesegfault.dev' || 'https://skills-staging.moesegfault.dev' }}
     steps:
       - uses: actions/checkout@v4
       - name: Create repository-local scratch directories
@@ -177,8 +194,14 @@ jobs:
           name: rust-worker
           path: crates/mskill-worker/build
       - name: Migrate registry and deploy the tested artifact
+        shell: bash
         run: |
-          npx wrangler d1 migrations apply DB --env staging --remote
-          npx wrangler deploy --env staging
-      - name: Staging public smoke
-        run: node scripts/smoke.mjs https://skills-staging.moesegfault.dev
+          case "$DEPLOYMENT_ENVIRONMENT" in
+            staging) flags=(--env staging) ;;
+            production) flags=() ;;
+            *) echo "Unknown deployment environment" >&2; exit 1 ;;
+          esac
+          npx wrangler d1 migrations apply DB --remote "${flags[@]}"
+          npx wrangler deploy "${flags[@]}"
+      - name: Selected registry public smoke
+        run: node scripts/smoke.mjs "$REGISTRY_ORIGIN"

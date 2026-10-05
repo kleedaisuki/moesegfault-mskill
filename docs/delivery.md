@@ -38,16 +38,35 @@ workflow files change. A Linux/Windows native matrix exercises native contracts
 and real local CLI journeys. One Linux job builds Wasm and runs the full CLI /
 OIDC / Workers / D1 / R2 journey. Rust dependencies, installed Worker build tools,
 and npm downloads are cached. Pull-request jobs read caches but do not write them.
-All jobs have bounded timeouts. A newer push cancels an obsolete test run.
+All jobs have bounded timeouts. A newer branch/check-only run cancels its obsolete
+predecessor; runs eligible to deploy are not canceled automatically.
 
 Deployment consumes the exact Worker artifact produced by the tested integration
 job and sets `MSKILL_SKIP_BUILD=1`; the build hook verifies the prebuilt shim and
 Wasm are present without compiling a second untested artifact. Wrangler 4.130
 does not expose a `--no-build` option.
-Staging deployments are serialized without interrupting an in-progress migration.
-Pushes to `main` deploy staging; a manual dispatch can deploy a tested branch to
-staging. The workflow deliberately does not make production trust the staging
-Identity client.
+Workflow concurrency separates checks, staging deployments and production
+deployments. Both the workflow run and deployment job keep an active deployment
+noncancellable; a job-level lock alone would not protect against workflow-level
+cancellation. GitHub may still coalesce older pending runs in the same group.
+Deployments are serialized per environment without interrupting an in-progress
+migration. Pushes to `main` always deploy staging. A manual dispatch selects
+`staging` (the default) or `production`; deployment still requires `deploy=true`
+and the existing native/Worker acceptance jobs. The selected GitHub environment
+and deployment concurrency key match the target. Staging uses `--env staging`,
+while production uses the root Wrangler configuration with isolated production
+bindings and production Identity registration. The public smoke targets the
+matching domain; the workflow never makes production trust the staging client.
+Manual production deployment is allowed only from `refs/heads/main`; a feature
+branch or tag can run checks but cannot replace the production configuration.
+
+```sh
+# After production registration/configuration is reviewed and merged:
+gh workflow run ci.yml --ref main -f deploy=true -f environment=production
+```
+
+Selecting production does not register an Identity client, change token
+audiences, bypass authentication, or rebuild the tested Worker artifact.
 
 `release.yml` creates portable Linux x86_64, Windows x86_64, and macOS ARM64 CLI
 archives with LICENSE and SHA-256 files. Release tags are distributable client
@@ -81,10 +100,12 @@ npx wrangler deploy --env staging
 node scripts/smoke.mjs https://skills-staging.moesegfault.dev
 ```
 
-Production public reads can be deployed independently from client registration.
-Authenticated production writes remain blocked while `IDENTITY_CLIENT_ID` is
-`UNPROVISIONED`. Registering a client in the existing Identity service is a
-separate reviewed deployment action. Tests use staging Identity only.
+The production native client `mskill-cli` was registered through the reviewed
+Identity deployment configuration after explicit launch approval and read back
+enabled. The root Worker audience is now `mskill-cli` on the exact production
+issuer. Staging retains `mskill-cli-staging` and its separate issuer/storage.
+Deployment does not perform registration or bypass account mapping; production
+account tests remain excluded, while actual user-journey QA uses staging only.
 
 ## Observability acceptance
 
@@ -199,6 +220,34 @@ pins deliberately at a separate maintenance checkpoint rather than churn a
 passing initial delivery. Run metadata/logs are retained locally in
 `.temp/actions`; credentials and fixture token files were not exported.
 
+### Main Actions artifact promotion and deployed acceptance
+
+Commit `978c5bdcf30343a5e46607242eabcac1f33af4f1` passed the normal main pipeline
+[run 37278545298](https://github.com/kleedaisuki/moesegfault-mskill/actions/runs/37278545298)
+on 2026-10-05, including actual staging deployment with the repository's existing
+scoped Cloudflare Actions credentials:
+
+| Job | Result | Duration |
+| --- | --- | --- |
+| CLI (ubuntu-latest) | Passed | 1m 29s |
+| CLI (windows-latest) | Passed | 3m 08s |
+| Rust Worker and end-to-end account journeys | Passed | 5m 44s |
+| Deploy tested Rust Worker | Passed | 20s |
+
+The deploy job downloaded the tested artifact, confirmed no pending D1
+migrations, and used the verified prebuilt-artifact hook without recompiling.
+Cloudflare deployed version `19293715-71f0-444c-8b92-e94ecfbbf634`, reporting
+startup 3 ms and upload 1122.10 KiB / gzip 413.10 KiB. Workflow public smoke passed
+health/catalog 200, incoming application trace correlation and anonymous
+management denial. A separate developer-machine smoke after the Actions run
+also passed. An anonymous real CLI pulled and cloned both maintained public
+packages after promotion; installed manifests still match repository sources.
+This closes actual Actions artifact promotion, not merely a local deployment.
+
+No production Worker or production Identity client was changed by this pipeline.
+The bounded watch encountered one transient GitHub API EOF; a fresh status read
+succeeded and the run itself required no retry, repair, or source change.
+
 ## Reference decisions
 
 - [Cloudflare Rust Workers](https://developers.cloudflare.com/workers/languages/rust/):
@@ -211,3 +260,20 @@ passing initial delivery. Run metadata/logs are retained locally in
 - [More Haste, Less Speed: Cache Related Security Threats in CI/CD](https://par.nsf.gov/servlets/purl/10522475):
   cache contents and trust boundaries matter. Cache build dependencies only,
   never authenticated sessions or fixture token files.
+
+## Final canonical-name and official-login acceptance
+
+The final native source passed 17 unit tests and one doctest, then the actual
+CLI completed 54 full Worker/OIDC/D1/R2 commands and 26 local-only commands.
+Project directory leaf names were independently checked against SKILL.md names.
+Noncanonical alias requests were rejected before project mutation; old managed
+aliases remained removable. Package manifests and archive bytes were not rewritten
+to manufacture aliases. Official login defaults only to the registered production
+issuer/registry pair; custom destinations require an explicit client ID.
+
+Eight event/concurrency cases verified that checks remain cancellable while
+staging/production deployments cannot be interrupted by unrelated checks.
+Production deployment is restricted to main and still consumes the tested artifact.
+Release packages include upstream dependency license notices; maintained .skill
+packages declare the repository license and bundle its full text.
+
