@@ -4,7 +4,7 @@ main = "crates/mskill-worker/build/index.js"
 compatibility_date = "2026-09-15"
 account_id = "07109e406d4e1ab7a0997dd399db6fd5"
 workers_dev = true
-routes = [{ pattern = "skills.moesegfault.dev", custom_domain = true }]
+routes = [{ pattern = "skills.moesegfault.dev", custom_domain = true }, { pattern = "mskill.moesegfault.dev", custom_domain = true }]
 
 [build]
 command = "node scripts/build-worker.mjs"
@@ -14,6 +14,10 @@ ENVIRONMENT = "production"
 # Native public client registration is deployment-owned. Never accept a fallback.
 IDENTITY_ISSUER = "https://identity.moesegfault.dev"
 IDENTITY_CLIENT_ID = "mskill-cli"
+# Browser BFF is confidential; its private JWK is a Worker secret, never a var.
+WEB_ORIGIN = "https://skills.moesegfault.dev"
+PRODUCT_ORIGIN = "https://mskill.moesegfault.dev"
+WEB_CLIENT_ID = "mskill-web"
 LOCAL_DEV_AUTH = "false"
 
 [[d1_databases]]
@@ -47,12 +51,15 @@ crons = ["*/10 * * * *"]
 [env.staging]
 name = "mskill-registry-staging"
 workers_dev = true
-routes = [{ pattern = "skills-staging.moesegfault.dev", custom_domain = true }]
+routes = [{ pattern = "skills-staging.moesegfault.dev", custom_domain = true }, { pattern = "mskill-staging.moesegfault.dev", custom_domain = true }]
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
 IDENTITY_ISSUER = "https://identity-staging.moesegfault.dev"
 IDENTITY_CLIENT_ID = "mskill-cli-staging"
+WEB_ORIGIN = "https://skills-staging.moesegfault.dev"
+PRODUCT_ORIGIN = "https://mskill-staging.moesegfault.dev"
+WEB_CLIENT_ID = "mskill-web-staging"
 LOCAL_DEV_AUTH = "false"
 
 [[env.staging.d1_databases]]

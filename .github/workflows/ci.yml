@@ -6,6 +6,7 @@ on:
     paths:
       - 'crates/**'
       - 'skills/**'
+      - 'web/**'
       - 'scripts/**'
       - 'migrations/**'
       - 'Cargo.*'
@@ -18,6 +19,7 @@ on:
     paths:
       - 'crates/**'
       - 'skills/**'
+      - 'web/**'
       - 'scripts/**'
       - 'migrations/**'
       - 'Cargo.*'
@@ -180,6 +182,7 @@ jobs:
       MSKILL_SKIP_BUILD: 1
       DEPLOYMENT_ENVIRONMENT: ${{ inputs.environment || 'staging' }}
       REGISTRY_ORIGIN: ${{ inputs.environment == 'production' && 'https://skills.moesegfault.dev' || 'https://skills-staging.moesegfault.dev' }}
+      PRODUCT_ORIGIN: ${{ inputs.environment == 'production' && 'https://mskill.moesegfault.dev' || 'https://mskill-staging.moesegfault.dev' }}
     steps:
       - uses: actions/checkout@v4
       - name: Create repository-local scratch directories
@@ -205,3 +208,5 @@ jobs:
           npx wrangler deploy "${flags[@]}"
       - name: Selected registry public smoke
         run: node scripts/smoke.mjs "$REGISTRY_ORIGIN"
+      - name: Product discovery and guest workspace smoke
+        run: node scripts/web-smoke.mjs "$PRODUCT_ORIGIN" "$REGISTRY_ORIGIN"
