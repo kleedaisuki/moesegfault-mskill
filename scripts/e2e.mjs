@@ -62,7 +62,12 @@ async function run(user, args, { fail = false, login = false, json = true } = {}
 
 /** Assert installed content independently of CLI metadata. */
 async function content(project, alias, marker) {
-  assert.match(await readFile(path.join(project, '.agents', 'skills', alias, 'SKILL.md'), 'utf8'), new RegExp(marker));
+  const installed = path.join(project, '.agents', 'skills', alias);
+  const manifest = await readFile(path.join(installed, 'SKILL.md'), 'utf8');
+  const declaredName = manifest.match(/^name:\s*([^\r\n]+)$/m)?.[1];
+  assert.ok(declaredName, 'Installed manifest must declare a name');
+  assert.equal(path.basename(installed), declaredName, 'Consumer directory must match declared skill name');
+  assert.match(manifest, new RegExp(marker));
 }
 
 /** Emit a minimal stored ZIP independently of the production packer. */
@@ -111,7 +116,14 @@ try {
   }
   const source = path.join(workspace, 'source', 'hello');
   const project = path.join(workspace, 'project');
-  await mkdir(source, { recursive: true }); await mkdir(project, { recursive: true });
+  const linkProject = path.join(workspace, 'project-link');
+  const remoteProject = path.join(workspace, 'project-remote-copy');
+  const remoteLinkProject = path.join(workspace, 'project-remote-link');
+  const bobProject = path.join(workspace, 'project-bob');
+  const unmanagedProject = path.join(workspace, 'project-unmanaged');
+  const rejectedProject = path.join(workspace, 'project-rejected-alias');
+  await mkdir(source, { recursive: true });
+  for (const directory of [project, linkProject, remoteProject, remoteLinkProject, bobProject, unmanagedProject, rejectedProject]) await mkdir(directory, { recursive: true });
   const skill = marker => `---\nname: hello\ndescription: E2E integration skill\n---\n\n# Hello\n\n${marker}\n`;
   await writeFile(path.join(source, 'SKILL.md'), skill('MARKER_ONE'));
   await writeFile(path.join(source, 'resource.txt'), 'independent resource\n');
@@ -132,6 +144,13 @@ try {
   const unchanged = await run('alice', ['add', source]);
   assert.equal(unchanged.sha256, added.sha256);
   assert.equal((await stat(added.archive)).mtimeMs, unchangedTime, 'Identical local source must preserve archive');
+  const legacyProject = path.join(workspace, 'project-legacy-alias');
+  const legacySkills = path.join(legacyProject, '.agents', 'skills');
+  await mkdir(path.join(legacySkills, 'old-alias'), { recursive: true });
+  await writeFile(path.join(legacySkills, 'old-alias', 'SKILL.md'), skill('LEGACY_INSTALL'));
+  await writeFile(path.join(legacySkills, '.mskill.json'), JSON.stringify({ entries: { 'old-alias': { id: added.id, sha256: added.sha256, linked: false } } }));
+  await run('alice', ['remove', 'old-alias', '--project', legacyProject]);
+  await assert.rejects(stat(path.join(legacySkills, 'old-alias')), { code: 'ENOENT' });
   const imported = await run('importer', ['add', added.archive]);
   assert.equal(imported.sha256, added.sha256, 'Import must preserve portable archive bytes');
   await run('importer', ['add', portable]);
@@ -142,21 +161,24 @@ try {
   await run('alice', ['export', 'hello', '--output', exported], { fail: true });
   assert.ok((await run('alice', ['list'])).some(entry => entry.id.name === 'hello'));
   await run('alice', ['list'], { json: false });
-  await run('alice', ['clone', 'hello', '--project', project, '--alias', 'copied']);
-  await run('alice', ['link', 'hello', '--project', project, '--alias', 'linked']);
-  await content(project, 'copied', 'MARKER_ONE'); await content(project, 'linked', 'MARKER_ONE');
-  assert.equal(await readFile(path.join(project, '.agents', 'skills', 'copied', 'resource.txt'), 'utf8'), 'independent resource\n');
-  await run('alice', ['clone', 'hello', '--project', project, '--alias', 'copied']);
-  const unmanaged = path.join(project, '.agents', 'skills', 'unmanaged');
-  await mkdir(unmanaged); await writeFile(path.join(unmanaged, 'SKILL.md'), 'DO_NOT_TOUCH');
-  await run('alice', ['clone', 'hello', '--project', project, '--alias', 'unmanaged'], { fail: true });
-  await run('alice', ['remove', 'unmanaged', '--project', project], { fail: true });
+  await run('alice', ['clone', 'hello', '--project', rejectedProject, '--alias', 'noncanonical'], { fail: true });
+  await run('alice', ['link', 'hello', '--project', rejectedProject, '--alias', 'noncanonical'], { fail: true });
+  await assert.rejects(stat(path.join(rejectedProject, '.agents')), { code: 'ENOENT' });
+  await run('alice', ['clone', 'hello', '--project', project]);
+  await run('alice', ['link', 'hello', '--project', linkProject]);
+  await content(project, 'hello', 'MARKER_ONE'); await content(linkProject, 'hello', 'MARKER_ONE');
+  assert.equal(await readFile(path.join(project, '.agents', 'skills', 'hello', 'resource.txt'), 'utf8'), 'independent resource\n');
+  await run('alice', ['clone', 'hello', '--project', project, '--alias', 'hello']);
+  const unmanaged = path.join(unmanagedProject, '.agents', 'skills', 'hello');
+  await mkdir(unmanaged, { recursive: true }); await writeFile(path.join(unmanaged, 'SKILL.md'), 'DO_NOT_TOUCH');
+  await run('alice', ['clone', 'hello', '--project', unmanagedProject], { fail: true });
+  await run('alice', ['remove', 'hello', '--project', unmanagedProject], { fail: true });
   assert.equal(await readFile(path.join(unmanaged, 'SKILL.md'), 'utf8'), 'DO_NOT_TOUCH');
   await writeFile(path.join(source, 'SKILL.md'), skill('MARKER_TWO'));
   const changed = await run('alice', ['update', 'hello', '--from', source]);
-  await content(project, 'linked', 'MARKER_TWO'); await content(project, 'copied', 'MARKER_ONE');
-  await run('alice', ['clone', 'hello', '--project', project, '--alias', 'copied']);
-  await content(project, 'copied', 'MARKER_TWO');
+  await content(linkProject, 'hello', 'MARKER_TWO'); await content(project, 'hello', 'MARKER_ONE');
+  await run('alice', ['clone', 'hello', '--project', project]);
+  await content(project, 'hello', 'MARKER_TWO');
   if (!localOnly) {
   fixture.setIdentity('alice'); await run('alice', ['login', '--no-browser'], { login: true, json: false });
   const profile = await run('alice', ['whoami']);
@@ -166,8 +188,8 @@ try {
   assert.equal(profile.owner_id, alice.owner_id, 'Profile must match published namespace');
   const downloaded = await run('reader', ['pull', aliceId]);
   assert.equal(createHash('sha256').update(await readFile(downloaded.archive)).digest('hex'), alice.sha256);
-  await run('reader', ['clone', aliceId, '--project', project, '--alias', 'downloaded']);
-  await content(project, 'downloaded', 'MARKER_TWO');
+  await run('reader', ['clone', aliceId, '--project', remoteProject]);
+  await content(remoteProject, 'hello', 'MARKER_TWO');
   const beforeNoop = await stat(downloaded.archive);
   await run('reader', ['update', aliceId]);
   assert.equal((await stat(downloaded.archive)).mtimeMs, beforeNoop.mtimeMs, 'Unchanged SHA must not rewrite archive');
@@ -179,10 +201,10 @@ try {
   assert.ok(listed.some(entry => entry.owner_id === alice.owner_id && entry.name === 'hello'));
   assert.ok(listed.some(entry => entry.owner_id === bob.owner_id && entry.name === 'hello'));
   await run('reader', ['pull', `${bob.owner_id}/hello`]);
-  await run('reader', ['clone', `${bob.owner_id}/hello`, '--project', project, '--alias', 'downloaded'], { fail: true });
-  await content(project, 'downloaded', 'MARKER_TWO');
-  await run('reader', ['clone', `${bob.owner_id}/hello`, '--project', project, '--alias', 'bob-download']);
-  await content(project, 'bob-download', 'MARKER_TWO');
+  await run('reader', ['clone', `${bob.owner_id}/hello`, '--project', remoteProject], { fail: true });
+  await content(remoteProject, 'hello', 'MARKER_TWO');
+  await run('reader', ['clone', `${bob.owner_id}/hello`, '--project', bobProject]);
+  await content(bobProject, 'hello', 'MARKER_TWO');
   await run('bob', ['remove', aliceId, '--scope', 'cloud'], { fail: true });
   await run('bob', ['logout'], { json: false });
   fixture.setIdentity('alice'); fixture.setLifetime(3);
@@ -193,8 +215,8 @@ try {
   await run('alice', ['update', 'hello', '--from', source]); await run('alice', ['publish', 'hello']);
   assert.ok(fixture.counters.refresh >= 1, 'Expired session must refresh through token endpoint');
   await run('reader', ['update', aliceId]);
-  await run('reader', ['link', aliceId, '--project', project, '--alias', 'remote-link']);
-  await content(project, 'remote-link', 'MARKER_THREE');
+  await run('reader', ['link', aliceId, '--project', remoteLinkProject]);
+  await content(remoteLinkProject, 'hello', 'MARKER_THREE');
   const credential = JSON.parse(await readFile(path.join(home('alice'), 'test-credentials.json'), 'utf8'));
   for (const label of ['traversal', 'duplicate', 'symlink']) {
     const response = await fetch(`${registry}/v1/skills/${aliceId}`, { method: 'PUT', headers: { authorization: `Bearer ${credential.access_token}`, 'content-type': 'application/vnd.mskill.skill' }, body: await readFile(path.join(workspace, `${label}.skill`)) });
@@ -243,8 +265,8 @@ try {
     events.push({ command: 'trace-correlation', identityTraceCount: fixture.traces.size, workerLogCorrelated: true });
   }
   }
-  await run('alice', ['remove', 'linked', '--project', project]);
-  await run('alice', ['remove', 'copied', '--project', project]);
+  await run('alice', ['remove', 'hello', '--project', linkProject]);
+  await run('alice', ['remove', 'hello', '--project', project]);
   await run('alice', ['remove', 'hello', '--scope', 'local']);
   const cliCommandCount = events.filter(event => typeof event.exit === 'number').length;
   await writeFile(path.join(workspace, 'results.json'), JSON.stringify({ passed: true, mode: localOnly ? 'local-only' : 'full', cliCommandCount, events, oidc: fixture.counters }, null, 2));

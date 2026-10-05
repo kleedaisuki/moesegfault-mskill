@@ -46,7 +46,7 @@ The harness invokes the project-local Wrangler through Node (no shell-specific c
 
 Every run writes `.temp/e2e/results.json` with pass/fail, sanitized command names/arguments, exit codes, durations, and OIDC endpoint counters. No authorization URLs or token responses are logged. A harness-owned Worker additionally writes `.temp/e2e/worker.log`. Command failures abort the run rather than silently skip a check. Fixture credential files are private test data and must not be uploaded as CI artifacts; retain only results and sanitized Worker logs.
 
-Current status: full Windows real-process acceptance passed with 51 CLI commands plus service observations; native local and actual staging CRUD/refresh/publication/logout acceptance also passed. Both scripts pass `node --check`. Detailed run conditions, repaired defects, and remaining coverage limits are recorded below.
+Current status: final canonical Windows full acceptance passed with 54 actual CLI commands plus service observations, with independent on-disk name checks. Actual staging CRUD/refresh/publication/logout and public served-asset/API checks also passed. Rendered browser interactions remain unavailable. Detailed historical runs and remaining coverage limits are recorded below.
 
 Coverage limits: production OS vault/real staging Identity, deployed Workers observability dashboard ingestion, a forced compare-and-swap conflict interleaving, and cross-platform CI results are separate acceptance checks. Local response correlation is not proof of dashboard ingestion.
 
@@ -157,4 +157,37 @@ These useful packages remain in the staging catalog; only the disposable accepta
 After publication and natural-refresh acceptance were complete, coordinated final `--verbose logout` returned provider revocation HTTP 200. Subsequent actual CLI `whoami` and `publish local/mskill-use` both failed as expected, proving the OS-vault session was removed. Anonymous cloud listing still returned both published packages. This final phase passed 12 actual CLI commands. Sanitized evidence is `.temp/staging-journey/maintained-results.json`, `logout.log`, and `signed-out-denial.log`.
 
 The real staging CRUD, natural provider refresh, useful-package publication and provider-backed logout loop is complete. The staging OS-vault session is intentionally signed out now. Remaining external acceptance is Linux CI execution, deployed Cloudflare dashboard ingestion, and a forced concurrent CAS-conflict interleaving; the local Windows run alone does not establish those.
+
+
+## Served staging catalog checks
+
+Supported Browser runtime setup completed, but browser selection returned `No browser is available`. The required troubleshooting documentation was consulted; one discovery call returned `[]`. No session resets, Computer Use fallback, browser credential inspection, or unsupported automation was attempted. Consequently rendered search/filter, clipboard interaction, and narrow/mobile screenshots are **unverified**, not reported as passing.
+
+The bounded fallback fetched the actual served staging HTML, `/assets/app.js`, `/assets/app.css`, `/v1/skills`, and both maintained archive download routes. Results:
+
+- Website, JavaScript, CSS and public catalog returned HTTP 200 with expected content types.
+- Actual served JavaScript passed `new vm.Script(...)` syntax parsing.
+- Served HTML includes the declared catalog/filter/status/count/load-more DOM hooks, a viewport meta tag and polite live status; stylesheet includes responsive media queries. These are source/DOM contracts, not a visual-layout pass.
+- Public catalog contains both maintained skills. Each download returned HTTP 200 and exact byte length/SHA-256 matching its current metadata and quoted ETag.
+- Current `mskill-use`: 3,012 bytes, SHA `0db34852e1daae6a751899033efeca8dac3350d4fd5c070469081c832696c3de`.
+- Current `mskill-publish`: 2,199 bytes, SHA `d94c83e1c6af2300b26365e59567394af5d92b6f6acf9118fca251872dc016f7` (a subsequent maintained publication superseded the earlier hash recorded above).
+
+Actual fetched resources, package bytes, and the reproducible public-check harness/results are stored only under `.temp/ui-acceptance`. No screenshot is supplied because no rendered browser surface was available.
+
+## Final canonical consumer-directory contract
+
+The final standard-consumer contract requires each newly installed project directory leaf to equal the skill's declared manifest name. Noncanonical `--alias` installs are rejected without project mutation; removal of previously managed legacy aliases remains compatible.
+
+The real-process harness has been adapted accordingly: clone and link comparisons use separate projects with canonical `hello` directories, distinct publishers with the same name install into separate projects, and an attempted second-publisher collision in the first project must preserve the existing installation. Every successful manifest-content assertion independently parses `SKILL.md` and checks the directory leaf equals the declared name. A rejected noncanonical alias must leave the target project without an `.agents` directory. A seeded legacy managed-alias manifest exercises actual CLI removal to preserve the earlier external contract.
+
+Historical 23-command native and 51-command full passes above apply to the prior alias-capable contract; they are retained as historical results, not claimed as final canonical-fixture acceptance. The updated fixture passes syntax checking and awaits the final integration owner's one-batch build/run. No validator Cargo build was launched.
+
+
+### Final canonical fixture acceptance: PASS
+
+The final integration owner rebuilt the updated CLI/Worker and completed the canonical fixture on Windows: **54 actual CLI subprocess commands passed**, plus three service observations (concurrent latest integrity, actual scheduled GC, and shared Identity/Worker trace correlation). Run-specific evidence is `.temp/e2e/results.json` and sanitized `worker.log`.
+
+An independent post-run check then read the actual installed files in the remote-copy, remote-link, and second-publisher projects: each directory leaf was `hello` and each parsed `SKILL.md` declared `name: hello`. Both noncanonical clone and link attempts exited nonzero and left the rejected project's `.agents` path absent. The seeded previously managed `old-alias` directory was removed by the actual CLI, preserving removal compatibility. Evidence: `.temp/e2e/canonical-independent.json`.
+
+The final run also observed one real mock-provider refresh, three revocations, nine trace IDs with Worker-log correlation, scheduled cleanup preserving the live package and keeping the deleted pointer absent, and concurrent writes `[200, 200]` resolving to intact latest archive bytes. No `publish_conflict` 409 was forced by the scheduler; the digest-bound stale-download 409 path is covered. This supersedes the earlier alias-capable fixture counts without rewriting their historical outcomes.
 
