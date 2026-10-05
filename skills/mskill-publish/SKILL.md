@@ -1,5 +1,6 @@
 ---
 name: mskill-publish
+license: GPL-3.0-only
 description: Sign in to the mskill registry with moeSegFault Identity and publish, replace, or remove skills using the mskill CLI. Use for registry account and publishing workflows, not unrelated authentication or skill authoring.
 ---
 

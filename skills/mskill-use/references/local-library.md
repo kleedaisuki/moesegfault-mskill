@@ -11,15 +11,17 @@ mskill list
 mskill clone local/my-skill --project .
 ```
 
-`add` imports a skill directory or `.skill` archive. Importing the same name replaces its current local package when its hash changes; an identical package is a no-op. `clone` installs a snapshot beneath the selected project's `.agents/skills`; it is independent of later library updates. Use `--alias NAME` to choose a different project directory name.
+`add` imports a skill directory or `.skill` archive. Importing the same name replaces its current local package when its hash changes; an identical package is a no-op. `clone` installs a snapshot beneath the selected project's `.agents/skills`; it is independent of later library updates. The installed directory name must match the `name` in `SKILL.md`; do not rename it or edit its manifest to resolve a collision.
 
 ```sh
-mskill link local/my-skill --project . --alias project-helper
+mskill link local/my-skill --project ./another-project
 ```
+
+To compare a copy and a live link, use separate projects as above. In a single project choose one mode; explicitly remove its installation before switching modes.
 
 `link` makes the project's directory a symbolic link to the library's extracted skill directory. Library changes are visible through the link. On Windows, creating symbolic links may require Developer Mode or suitable privileges; use `clone` when links are unavailable. Do not elevate privileges just to make a link when a copy meets the user's goal.
 
-The CLI protects unmanaged project directories from replacement and does not overwrite a managed alias belonging to another skill. The default project folder is the skill name for both local and cloud packages; use distinct aliases when installing names shared by different publishers. Do not bypass that protection by deleting a user's existing skill directory. Resolve the name or choose a project alias instead.
+The CLI protects unmanaged project directories from replacement and does not overwrite an installation belonging to another publisher. Both local and cloud packages use the canonical skill name for the project folder. To use a different publisher of the same name, choose another project or explicitly remove the current managed installation before installing the requested publisher. Do not bypass protection by deleting a user-owned directory. The retained `--alias` option accepts only the canonical skill name; it cannot rename installations.
 
 ## Share or back up an archive
 
@@ -43,13 +45,10 @@ Local skills require `--from PATH`; registry-installed skills fetch their cloud 
 ## Remove only the requested scope
 
 ```sh
-mskill remove project-helper --scope project --project .
+mskill remove my-skill --scope project --project .
 mskill remove local/my-skill --scope local
 ```
 
-Project removal takes the installed directory name or alias and is the default scope. Local removal takes a library identity; existing project copies remain, while a project link may become unusable if its library target is removed. Registry deletion is a separate publishing operation.
+Project removal takes the canonical skill name and is the default scope. Local removal takes a library identity; existing project copies remain, while a project link may become unusable if its library target is removed. Registry deletion is a separate publishing operation.
 
 Use `--json` for machine-readable output and `--verbose` for diagnostics. Color is for interactive terminals and is disabled for redirected output. Avoid treating diagnostic text as the command's data contract.
-
-
-

@@ -2,9 +2,13 @@
 
 Reuse skills across projects without keeping a separate copy by hand.
 
-`mskill` maintains a local library in `~/.mskill`, distributes skills as portable ZIP archives with a `.skill` extension, and installs ordinary skill directories into a project's `.agents/skills`. The registry is designed for `skills.moesegfault.dev`, with account-scoped names such as `publisher-id/code-review`.
+`mskill` maintains a local library in `~/.mskill`, distributes skills as portable ZIP archives with a `.skill` extension, and installs ordinary skill directories into a project's `.agents/skills`. The registry is `skills.moesegfault.dev`, with account-scoped names such as `publisher-id/code-review`.
 
-## Build the CLI
+## Install the CLI
+
+Download the package for your operating system from [GitHub Releases](https://github.com/kleedaisuki/moesegfault-mskill/releases/latest), extract it, and put `mskill` (`mskill.exe` on Windows) on your `PATH`. Release packages include the application license, upstream dependency license notices, and a SHA-256 checksum file.
+
+### Build from source
 
 Install a Rust toolchain, then build from this repository:
 
@@ -22,10 +26,11 @@ mskill list
 mskill clone local/mskill-use --project .
 ```
 
-This copies the skill into `.agents/skills/mskill-use`. To share the live local-library contents instead, use a symbolic link:
+This copies the skill into `.agents/skills/mskill-use`. Choose either `clone` for a snapshot or `link` for live local-library contents in the project. To switch the example above to a link, first remove its project copy:
 
 ```sh
-mskill link local/mskill-use --project . --alias mskill-helper
+mskill remove mskill-use --scope project --project .
+mskill link local/mskill-use --project .
 ```
 
 On Windows, symbolic links may require Developer Mode or suitable privileges. `clone` works without symbolic links.
@@ -51,7 +56,7 @@ mskill whoami
 mskill publish local/mskill-use
 ```
 
-Publishing signs in with moeSegFault Identity and uses your mapped account namespace. Different accounts can publish the same skill name. Configure the Identity client supplied by the registry operator before signing in. In these examples, replace `publisher-id` with the publisher namespace shown by `whoami`, `publish`, or in the registry listing.
+Publishing signs in with moeSegFault Identity and uses your mapped account namespace. Different accounts can publish the same skill name. The official service is configured out of the box: run `mskill login` without setting a client ID. In these examples, replace `publisher-id` with the publisher namespace shown by `whoami`, `publish`, or in the registry listing.
 
 ## Update and remove
 
@@ -60,7 +65,7 @@ mskill update publisher-id/code-review
 mskill update local/mskill-use --from ./skills/mskill-use
 mskill update
 
-mskill remove mskill-helper --scope project --project .
+mskill remove mskill-use --scope project --project .
 mskill remove local/mskill-use --scope local
 mskill remove my-account-id/my-published-skill --scope cloud
 ```
@@ -76,7 +81,7 @@ There are no package versions. Each name keeps its latest package, and updates r
 
 For cloud removal, replace `my-account-id/my-published-skill` with your own publication identity.
 
-Project removal is the default removal scope and uses the installed directory name or alias. Use full `owner/name` identities to distinguish packages with the same name. The CLI does not overwrite unmanaged project skill directories.
+Project removal is the default removal scope and uses the skill name. Installed directories keep the name declared in `SKILL.md`, as required by the [Agent Skills specification](https://agentskills.io/specification). Use full `owner/name` identities to distinguish library packages with the same name. A project can install only one publisher of a given skill name: use another project, or explicitly remove its current installation before installing the other publisher. The CLI does not overwrite unmanaged project skill directories.
 
 ## Configuration
 
@@ -84,13 +89,23 @@ Project removal is the default removal scope and uses the installed directory na
 | --- | --- |
 | `--home DIR` / `MSKILL_HOME` | Local library root; default `~/.mskill` |
 | `--registry URL` / `MSKILL_REGISTRY` | Registry endpoint |
-| `--client-id ID` / `MSKILL_OIDC_CLIENT_ID` | Identity client ID supplied by the operator |
+| `--client-id ID` / `MSKILL_OIDC_CLIENT_ID` | Optional override; the official service uses the registered `mskill-cli` client |
 | `--issuer URL` / `MSKILL_OIDC_ISSUER` | Identity issuer |
 | `--redirect-uri URL` / `MSKILL_OIDC_REDIRECT_URI` | Identity callback URL |
 | `--json` | Machine-readable output |
 | `--verbose` | Diagnostic output |
 
 Run `mskill --help` or `mskill COMMAND --help` for the installed CLI's full options. Interactive output uses color; pipes and unsupported terminals receive plain output.
+
+For a staging or custom registry, explicitly configure its Identity client. The official client default applies only to the official registry and issuer together; changing either requires an explicit client ID.
+
+```sh
+mskill --registry https://skills-staging.moesegfault.dev \
+  --issuer https://identity-staging.moesegfault.dev \
+  --client-id mskill-cli-staging login
+```
+
+Keep the same configuration for subsequent account and publication commands, or set the corresponding environment variables for that session.
 
 ## Maintained skills and distribution
 
@@ -100,13 +115,6 @@ Run `mskill --help` or `mskill COMMAND --help` for the installed CLI's full opti
 
 Treat downloaded skills as untrusted content until reviewed. Installing a package does not authorize running its scripts or following its instructions.
 
-
-
-
-
-
-
 ## Development and deployment
 
 [Build and deployment](docs/delivery.md) covers the Worker, CI, Cloudflare environments, and observability. [Identity onboarding](docs/identity-onboarding.md) covers account client setup. [User-journey testing](docs/e2e.md) describes the CLI-to-Worker acceptance workflow.
-
