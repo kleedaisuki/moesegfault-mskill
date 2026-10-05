@@ -1,0 +1,184 @@
+name: Test and deploy
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths:
+      - 'crates/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'migrations/**'
+      - 'Cargo.*'
+      - 'rust-toolchain*'
+      - '.cargo/**'
+      - 'package*.json'
+      - 'wrangler.toml'
+      - '.github/workflows/**'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'skills/**'
+      - 'scripts/**'
+      - 'migrations/**'
+      - 'Cargo.*'
+      - 'rust-toolchain*'
+      - '.cargo/**'
+      - 'package*.json'
+      - 'wrangler.toml'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the staging registry after tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_BUILD_JOBS: 2
+  CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/target
+  CARGO_TERM_COLOR: always
+  TMPDIR: ${{ github.workspace }}/.temp
+  TMP: ${{ github.workspace }}/.temp
+  TEMP: ${{ github.workspace }}/.temp
+
+jobs:
+  native:
+    name: CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create repository-local scratch directories
+        shell: bash
+        run: mkdir -p .temp .cache
+      - name: Install native keyring build dependency
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> .cache/target'
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - name: Formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+      - name: Test native contracts
+        run: cargo test --locked -p mskill-protocol -p mskill-core -p mskill-auth -p mskill-cli
+      - name: Build CLI
+        run: cargo build --locked -p mskill-cli
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Actual local CLI journey
+        run: node scripts/e2e.mjs --local-only
+      - name: Failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-${{ runner.os }}
+          path: |
+            .temp/e2e/worker.log
+            .temp/e2e/results.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+  worker:
+    name: Rust Worker and end-to-end account journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create repository-local scratch directories
+        run: mkdir -p .temp .cache
+      - name: Install native keyring build dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> .cache/target'
+          cache-directories: ~/.cargo/bin
+          save-if: ${{ github.event_name != 'pull_request' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install pinned Workers build tool only on cache miss
+        shell: bash
+        run: |
+          if ! command -v worker-build >/dev/null || [[ "$(worker-build --version)" != '0.8.7' ]]; then
+            cargo install worker-build --locked --version 0.8.7
+          fi
+      - name: Build real CLI and Worker
+        run: |
+          cargo build --locked -p mskill-cli --features e2e-test-store
+          npm run build:worker
+      - name: Real CLI against local D1, R2, and OIDC
+        run: npm run e2e -- --skip-build
+      - name: Save tested Worker for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-worker
+          path: crates/mskill-worker/build
+          retention-days: 3
+      - name: Failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-diagnostics
+          path: |
+            .temp/e2e/worker.log
+            .temp/e2e/results.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+  deploy:
+    name: Deploy tested Rust Worker
+    needs: [native, worker]
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: staging
+    concurrency:
+      group: mskill-staging-deploy
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MSKILL_SKIP_BUILD: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create repository-local scratch directories
+        run: mkdir -p .temp .cache
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: rust-worker
+          path: crates/mskill-worker/build
+      - name: Migrate registry and deploy the tested artifact
+        run: |
+          npx wrangler d1 migrations apply DB --env staging --remote
+          npx wrangler deploy --env staging
+      - name: Staging public smoke
+        run: node scripts/smoke.mjs https://skills-staging.moesegfault.dev

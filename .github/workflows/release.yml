@@ -1,0 +1,81 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_BUILD_JOBS: 2
+  CARGO_TARGET_DIR: ${{ github.workspace }}/.cache/target
+  TMPDIR: ${{ github.workspace }}/.temp
+  TMP: ${{ github.workspace }}/.temp
+  TEMP: ${{ github.workspace }}/.temp
+
+jobs:
+  binaries:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: mskill-linux-x86_64
+            binary: mskill
+          - os: windows-latest
+            artifact: mskill-windows-x86_64
+            binary: mskill.exe
+          - os: macos-latest
+            artifact: mskill-macos-aarch64
+            binary: mskill
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create repository-local scratch directories
+        shell: bash
+        run: mkdir -p .temp .cache
+      - name: Install native keyring build dependency
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> .cache/target'
+      - run: cargo build --locked --release -p mskill-cli
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Real user journey on the optimized release binary
+        run: node scripts/e2e.mjs --local-only --cli .cache/target/release/${{ matrix.binary }}
+      - name: Package portable binary with license and checksum
+        run: node scripts/package-release.mjs ${{ matrix.artifact }} ${{ matrix.binary }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: .temp/release/${{ matrix.artifact }}.*
+          retention-days: 7
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: binaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: .temp/release
+          merge-multiple: true
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" .temp/release/* --verify-tag --generate-notes
