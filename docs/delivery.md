@@ -177,6 +177,28 @@ The latest native suite passed sixteen tests and one doc test, with formatting
 and workflow YAML checks clean. Cross-platform Actions execution is tracked
 separately from these Windows results.
 
+### Initial cross-platform Actions acceptance
+
+Commit `e2e8d11b2f12bf985c0e35b512092e402867acd9` passed the initial branch
+[Test and deploy run 37277652866](https://github.com/kleedaisuki/moesegfault-mskill/actions/runs/37277652866)
+on 2026-10-05 without a CI repair or rerun:
+
+| Job | Result | Duration | Actual workflow coverage |
+| --- | --- | --- | --- |
+| CLI (ubuntu-latest) | Passed | 1m 30s | Native contracts, format, binary build, 23-command local CLI journey |
+| CLI (windows-latest) | Passed | 3m 07s | Native contracts, binary build, 23-command local CLI journey including links |
+| Rust Worker and end-to-end account journeys | Passed | 5m 21s | Pinned build-tool installation, native CLI, Wasm, real 51-command local D1/R2/OIDC journey, tested artifact upload |
+| Deploy tested Rust Worker | Intentionally skipped | 0s | Branch pushes test only; main/manual dispatch owns staging promotion |
+
+The cold Worker job completed well inside its 25-minute timeout. Its tested
+artifact is available for the subsequent staging promotion. GitHub emitted
+nonblocking maintenance notices: checkout/setup-node v4 target Node 20 but run
+under forced Node 24, and `ubuntu-latest` is scheduled to migrate to Ubuntu 26
+on 2026-10-19. These did not change the acceptance result; update action/image
+pins deliberately at a separate maintenance checkpoint rather than churn a
+passing initial delivery. Run metadata/logs are retained locally in
+`.temp/actions`; credentials and fixture token files were not exported.
+
 ## Reference decisions
 
 - [Cloudflare Rust Workers](https://developers.cloudflare.com/workers/languages/rust/):
