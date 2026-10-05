@@ -1,7 +1,7 @@
 /** Real-process CLI acceptance journey. All mutable fixtures stay under .temp/e2e. */
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, writeFile, rm, stat } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile, rm, stat, readdir } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { startMockOidc } from './mock-oidc.mjs';
@@ -93,7 +93,11 @@ try {
     const config = path.join(workspace, 'wrangler.json');
     const persist = path.join(workspace, 'state');
     workerConfig = config; workerPersist = persist;
-    await writeFile(config, JSON.stringify({ name: 'mskill-e2e', main: path.join(root, 'crates', 'mskill-worker', 'build', 'worker', 'shim.mjs'), compatibility_date: '2026-09-15', vars: { ENVIRONMENT: 'local', IDENTITY_ISSUER: fixture.issuer, IDENTITY_CLIENT_ID: 'mskill-e2e', LOCAL_DEV_AUTH: 'false' }, d1_databases: [{ binding: 'DB', database_name: 'mskill-e2e', database_id: '00000000-0000-0000-0000-000000000000', migrations_dir: path.join(root, 'migrations') }], r2_buckets: [{ binding: 'SKILLS', bucket_name: 'mskill-e2e' }], observability: { enabled: true } }, null, 2));
+    // Wrangler applies the whole migration directory; never freeze setup to early schema files.
+    const migrations = (await readdir(path.join(root, 'migrations'))).filter(name => /^\d{4}_.+\.sql$/.test(name)).sort();
+    assert.ok(migrations.includes('0003_web_workspace.sql'), 'Current workspace schema must be present');
+    fixture.setWebRedirectUri(registry + '/auth/callback');
+    await writeFile(config, JSON.stringify({ name: 'mskill-e2e', main: path.join(root, 'crates', 'mskill-worker', 'build', 'worker', 'shim.mjs'), compatibility_date: '2026-09-15', vars: { ENVIRONMENT: 'local', IDENTITY_ISSUER: fixture.issuer, IDENTITY_CLIENT_ID: 'mskill-e2e', WEB_ORIGIN: registry, PRODUCT_ORIGIN: 'http://localhost:8787', WEB_CLIENT_ID: fixture.webClientId, WEB_CLIENT_PRIVATE_JWK: JSON.stringify(fixture.webPrivateJwk), WEB_SESSION_KEY: randomBytes(32).toString('base64url'), LOCAL_DEV_AUTH: 'false' }, d1_databases: [{ binding: 'DB', database_name: 'mskill-e2e', database_id: '00000000-0000-0000-0000-000000000000', migrations_dir: path.join(root, 'migrations') }], r2_buckets: [{ binding: 'SKILLS', bucket_name: 'mskill-e2e' }], observability: { enabled: true } }, null, 2));
     const migrated = await command(process.execPath, [wrangler, 'd1', 'migrations', 'apply', 'mskill-e2e', '--local', '--config', config, '--persist-to', persist]);
     assert.equal(migrated.code, 0, `D1 setup failed: ${migrated.stderr}`);
     worker = spawn(process.execPath, [wrangler, 'dev', '--local', '--test-scheduled', '--config', config, '--persist-to', persist, '--port', new URL(registry).port || '8787', '--ip', '127.0.0.1'], { cwd: root, env, windowsHide: true, detached: process.platform !== 'win32' });

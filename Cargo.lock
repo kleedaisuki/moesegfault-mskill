@@ -1601,6 +1601,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "worker",
+ "zip",
 ]
 
 [[package]]

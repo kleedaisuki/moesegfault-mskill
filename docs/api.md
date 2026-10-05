@@ -53,6 +53,15 @@ or publish metadata separately from its body. Archive validation is specified in
 latest bytes and need not change the timestamp. A changed hash replaces the latest
 state. No route lists or restores historical versions.
 
+Optional write guards prevent replacing a state the user did not inspect:
+`If-None-Match: *` creates only (`412 skill_exists` on a collision), and
+`If-Match: "<sha256>"` permits replacement/deletion only while that digest is
+current (`412 archive_changed` otherwise). Guards participate in the durable
+commit/delete transaction. Existing clients omitting guards keep their contract.
+The cookie-protected `POST /web/publish` infers the name from the validated root
+manifest and uses the same latest-only publication path; see
+[web-backend.md](web-backend.md) for browser-only session/CSRF routes.
+
 The metadata commit follows a durable immutable blob write. Concurrent conflicting
 mutations may return `409 publish_conflict`; a client can fetch current metadata
 and ask the user to republish. Do not retry a write blindly in a way that overwrites

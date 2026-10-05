@@ -61,7 +61,11 @@ impl RequestContext {
             "permissions-policy",
             "camera=(), microphone=(), geolocation=()",
         )?;
-        if route.starts_with("/v1") || route == "/health" {
+        if route.starts_with("/v1")
+            || route.starts_with("/auth/")
+            || route.starts_with("/web/")
+            || route == "/health"
+        {
             response.headers_mut().set("cache-control", "no-store")?;
         }
         let event = serde_json::json!({"event":"http_request", "route":route, "method":method,

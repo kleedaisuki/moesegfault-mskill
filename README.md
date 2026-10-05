@@ -4,6 +4,13 @@ Reuse skills across projects without keeping a separate copy by hand.
 
 `mskill` maintains a local library in `~/.mskill`, distributes skills as portable ZIP archives with a `.skill` extension, and installs ordinary skill directories into a project's `.agents/skills`. The registry is `skills.moesegfault.dev`, with account-scoped names such as `publisher-id/code-review`.
 
+## Websites
+
+- [mskill.moesegfault.dev](https://mskill.moesegfault.dev): product introduction, CLI downloads, installation examples, and agent-readable guides.
+- [skills.moesegfault.dev](https://skills.moesegfault.dev): browse the community, read skill instructions and resources, download packages, and view public discussions without signing in. Sign in with your moeSegFault account to publish or manage your packages and participate in comments.
+
+Both websites provide Chinese, Japanese, and English interfaces and light, dark, or system appearance. Browser publication uses the same account namespace as the CLI. To upload a source directory through the website, first package it with `mskill pack`; the upload accepts portable `.skill` archives.
+
 ## Install the CLI
 
 Download the package for your operating system from [GitHub Releases](https://github.com/kleedaisuki/moesegfault-mskill/releases/latest), extract it, and put `mskill` (`mskill.exe` on Windows) on your `PATH`. Release packages include the application license, upstream dependency license notices, and a SHA-256 checksum file.

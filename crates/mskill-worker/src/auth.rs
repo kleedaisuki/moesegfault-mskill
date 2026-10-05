@@ -99,12 +99,28 @@ pub async fn authenticate(req: &Request, env: &Env) -> Result<Principal, AuthErr
             display_name: None,
         });
     }
-    let issuer = config(env, "IDENTITY_ISSUER")
+    let _issuer = config(env, "IDENTITY_ISSUER")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| unavailable_at("issuer_config"))?;
     let audience = config(env, "IDENTITY_CLIENT_ID")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| unavailable_at("audience_config"))?;
+    verify_token(req, env, token, &audience, None).await
+}
+
+/// Verify a browser ID token or access token against one explicit client audience.
+/// A nonce selects ID-token semantics; it never authorizes a resource operation.
+pub(crate) async fn verify_token(
+    req: &Request,
+    env: &Env,
+    token: &str,
+    audience: &str,
+    nonce: Option<&str>,
+) -> Result<Principal, AuthError> {
+    if token.len() > 16_384 {
+        return Err(invalid());
+    }
+    let issuer = config(env, "IDENTITY_ISSUER").ok_or_else(unavailable)?;
     let pieces: Vec<_> = token.split('.').collect();
     if pieces.len() != 3 {
         return Err(invalid());
@@ -118,7 +134,11 @@ pub async fn authenticate(req: &Request, env: &Env) -> Result<Principal, AuthErr
         return Err(invalid());
     }
     let claims: Claims = decode_json(pieces[1])?;
-    validate_claims(&claims, &issuer, &audience, now())?;
+    if let Some(expected) = nonce {
+        validate_identity_claims(&claims, &issuer, audience, expected, now())?;
+    } else {
+        validate_claims(&claims, &issuer, audience, now())?;
+    }
     let allow_local_http = config(env, "ENVIRONMENT").as_deref() == Some("local")
         && req
             .url()
@@ -168,10 +188,15 @@ struct Claims {
     exp: u64,
     /// Optional not-before boundary permits at most 30 seconds of future skew.
     nbf: Option<u64>,
+    /// ID-token issued-at must be present and cannot be in the future.
+    iat: Option<u64>,
     /// Access-token discriminator; ID tokens cannot authorize registry operations.
     token_use: String,
     /// Whitespace-delimited scopes; the current provider requires openid.
+    #[serde(default)]
     scope: String,
+    /// ID-token transaction binding, absent from access tokens.
+    nonce: Option<String>,
     /// Optional presentation value, never an ownership claim.
     name: Option<String>,
 }
@@ -197,6 +222,35 @@ fn validate_claims(c: &Claims, issuer: &str, audience: &str, time: u64) -> Resul
         || c.nbf.is_some_and(|nbf| nbf > time.saturating_add(30))
         || c.token_use != "access"
         || !c.scope.split_ascii_whitespace().any(|s| s == "openid")
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+/// ID tokens establish sessions only after exact transaction nonce validation.
+fn validate_identity_claims(
+    c: &Claims,
+    issuer: &str,
+    audience: &str,
+    nonce: &str,
+    time: u64,
+) -> Result<(), AuthError> {
+    let audience_matches = c.aud.as_str() == Some(audience)
+        || c.aud
+            .as_array()
+            .is_some_and(|a| a.len() == 1 && a[0].as_str() == Some(audience));
+    if c.iss != issuer
+        || !audience_matches
+        || c.sub.trim().is_empty()
+        || c.sub.len() > 1024
+        || c.exp <= time
+        || c.nbf.is_some_and(|n| n > time + 30)
+        || !c
+            .iat
+            .is_some_and(|iat| iat <= time.saturating_add(30) && iat < c.exp)
+        || c.token_use != "id"
+        || c.nonce.as_deref() != Some(nonce)
     {
         return Err(invalid());
     }
@@ -446,6 +500,19 @@ mod tests {
         assert!(validate_claims(&c, "https://issuer.test", "client", 200).is_err());
         c.token_use = "id".into();
         assert!(validate_claims(&c, "https://issuer.test", "client", 100).is_err());
+    }
+
+    #[test]
+    fn identity_tokens_bind_nonce_and_never_authorize_native_access() {
+        let mut c:Claims=serde_json::from_value(serde_json::json!({"iss":"https://issuer.test","aud":"web","sub":"user","exp":200,"token_use":"id","nonce":"fresh","iat":90})).unwrap();
+        assert!(validate_identity_claims(&c, "https://issuer.test", "web", "fresh", 100).is_ok());
+        assert!(validate_identity_claims(&c, "https://issuer.test", "web", "other", 100).is_err());
+        assert!(
+            validate_identity_claims(&c, "https://issuer.test", "native", "fresh", 100).is_err()
+        );
+        assert!(validate_claims(&c, "https://issuer.test", "web", 100).is_err());
+        c.token_use = "access".into();
+        assert!(validate_identity_claims(&c, "https://issuer.test", "web", "fresh", 100).is_err());
     }
 
     #[test]

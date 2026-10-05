@@ -1,0 +1,19 @@
+# mskill
+
+> Package management for Agent Skills: a local library, portable .skill ZIP archives, project copies or links, and account-scoped publishing.
+
+## Installation and usage
+- [English guide](https://mskill.moesegfault.dev/guide/en.md): Download, add, clone, link, publish, latest-only updates and safety.
+- [简体中文指南](https://mskill.moesegfault.dev/guide/zh-CN.md)
+- [日本語ガイド](https://mskill.moesegfault.dev/guide/ja.md)
+- [Structured CLI reference](https://mskill.moesegfault.dev/agent.json): Installation URLs, command examples and semantics.
+- [CLI releases](https://github.com/kleedaisuki/moesegfault-mskill/releases/latest): Windows x86_64, Linux x86_64, macOS arm64 with SHA-256 files.
+- [Source and full README](https://github.com/kleedaisuki/moesegfault-mskill): GPL-3.0-only source and detailed commands.
+
+## Registry and participation
+- [Public Skill workspace](https://skills.moesegfault.dev/): Guests may browse and download; sign in with moeSegFault to publish, manage and discuss.
+- [Maintained usage skill](https://github.com/kleedaisuki/moesegfault-mskill/tree/main/skills/mskill-use)
+- [Maintained publishing skill](https://github.com/kleedaisuki/moesegfault-mskill/tree/main/skills/mskill-publish)
+
+## Important semantics
+Skill packages have no version history: each owner/name retains only the latest package. Updates compare SHA-256. Project copies are snapshots; links follow the local library. Downloading a Skill is not permission to execute it. Preserve user-requested removal and publication scopes.

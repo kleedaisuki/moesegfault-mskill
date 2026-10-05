@@ -1,7 +1,10 @@
 //! Latest-only skill registry: Rust request handlers with D1 metadata and R2 archives.
 mod auth;
+mod community;
+mod landing;
 mod storage;
 mod telemetry;
+mod web_auth;
 mod website;
 
 use futures::StreamExt;
@@ -64,6 +67,9 @@ impl ApiError {
         if self.status == 401 {
             response.headers_mut().set("www-authenticate", "Bearer")?;
         }
+        if self.code == "session_refresh_busy" {
+            response.headers_mut().set("retry-after", "1")?;
+        }
         Ok(response)
     }
 }
@@ -113,8 +119,44 @@ pub async fn fetch(request: Request, env: Env, platform: Context) -> worker::Res
 async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> {
     let path = request.path();
     let method = request.method();
+    let product_host = env
+        .var("PRODUCT_ORIGIN")
+        .ok()
+        .and_then(|value| worker::Url::parse(&value.to_string()).ok())
+        .is_some_and(|origin| {
+            request
+                .url()
+                .ok()
+                .is_some_and(|url| url.origin() == origin.origin())
+        });
+    if product_host {
+        if method == Method::Get {
+            let staging = env
+                .var("ENVIRONMENT")
+                .ok()
+                .is_some_and(|value| value.to_string() == "staging");
+            if let Some(page) = landing::page(&path, staging) {
+                return Ok(page?);
+            }
+        }
+        return Err(ApiError::new(
+            404,
+            "route_not_found",
+            "Use the Skills workspace for registry operations.",
+        ));
+    }
+    if let Some(result) = web_auth::route(request, env).await {
+        return result;
+    }
+    if path == "/web/publish" && method == Method::Post {
+        let principal = web_auth::authenticate_browser(request, env, true).await?;
+        let profile = storage::account(env, principal).await?;
+        let condition = storage::WriteCondition::from_request(request)?;
+        let bytes = skill_body(request).await?;
+        return storage::publish_for_owner(env, &profile.owner_id, bytes, condition).await;
+    }
     if method == Method::Get {
-        if let Some(page) = website::page(&path) {
+        if let Some(page) = website::page(request, env).await {
             return Ok(page?);
         }
         if path == "/health" {
@@ -130,6 +172,15 @@ async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> 
         if path == "/v1/skills" {
             return storage::list(request, env).await;
         }
+        if path == "/v1/community" {
+            return community::catalog(request, env).await;
+        }
+        if let Some(owner) = path
+            .strip_prefix("/v1/accounts/")
+            .filter(|s| !s.contains('/'))
+        {
+            return community::profile(env, owner).await;
+        }
         if path == "/v1/me" {
             let principal = auth::authenticate(request, env).await?;
             return Ok(Response::from_json(
@@ -138,6 +189,32 @@ async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> 
         }
     }
     let parts: Vec<_> = path.split('/').collect();
+    if parts.len() >= 6
+        && parts[1] == "v1"
+        && parts[2] == "skills"
+        && matches!(parts[5], "preview" | "comments")
+    {
+        let id = SkillId::new(parts[3], parts[4])
+            .map_err(|error| ApiError::new(400, "invalid_skill_id", error.to_string()))?;
+        if parts.len() == 6 && parts[5] == "preview" && method == Method::Get {
+            return community::preview(request, env, &id).await;
+        }
+        if parts[5] == "comments" {
+            if parts.len() == 6 && method == Method::Get {
+                return community::comments(request, env, &id).await;
+            }
+            if (parts.len() == 6 && method == Method::Post)
+                || (parts.len() == 7 && (method == Method::Patch || method == Method::Delete))
+            {
+                return community::mutate_comment(request, env, &id, parts.get(6).copied()).await;
+            }
+        }
+        return Err(ApiError::new(
+            405,
+            "method_not_allowed",
+            "Unsupported preview or discussion operation.",
+        ));
+    }
     if !(parts.len() == 5 || (parts.len() == 6 && parts[5] == "archive"))
         || parts[1] != "v1"
         || parts[2] != "skills"
@@ -177,7 +254,7 @@ async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> 
             "Use GET, PUT or DELETE for a skill.",
         ));
     }
-    let principal = auth::authenticate(request, env).await?;
+    let principal = request_principal(request, env, true).await?;
     let profile = storage::account(env, principal).await?;
     if profile.owner_id != id.owner_id {
         return Err(ApiError::new(
@@ -187,8 +264,15 @@ async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> 
         ));
     }
     if method == Method::Delete {
-        return storage::remove(env, &id).await;
+        return storage::remove(env, &id, storage::WriteCondition::from_request(request)?).await;
     }
+    let condition = storage::WriteCondition::from_request(request)?;
+    let bytes = skill_body(request).await?;
+    storage::publish(env, &id, bytes, condition).await
+}
+
+/// Web inference and named CLI publication share the same bounded transport path.
+async fn skill_body(request: &mut Request) -> ApiResult<Vec<u8>> {
     let content_type = request.headers().get("content-type")?.unwrap_or_default();
     if !matches!(
         content_type.split(';').next().unwrap_or_default().trim(),
@@ -200,8 +284,20 @@ async fn route_request(request: &mut Request, env: &Env) -> ApiResult<Response> 
             "Upload a .skill ZIP archive.",
         ));
     }
-    let bytes = bounded_body(request).await?;
-    storage::publish(env, &id, bytes).await
+    bounded_body(request).await
+}
+
+/// Native bearer and browser cookie trust boundaries remain independently strict.
+/// A browser never supplies a web-audience bearer token to the CLI resource API.
+pub(crate) async fn request_principal(
+    request: &Request,
+    env: &Env,
+    mutation: bool,
+) -> ApiResult<auth::Principal> {
+    if request.headers().get("authorization")?.is_some() {
+        return Ok(auth::authenticate(request, env).await?);
+    }
+    web_auth::authenticate_browser(request, env, mutation).await
 }
 
 /// Enforce the bound on streamed bytes rather than trusting Content-Length alone.
@@ -243,6 +339,21 @@ fn route_name(path: &str) -> &'static str {
         "/v1/config" => "/v1/config",
         "/v1/me" => "/v1/me",
         "/v1/skills" => "/v1/skills",
+        "/v1/community" => "/v1/community",
+        "/web/session" => "/web/session",
+        "/web/publish" => "/web/publish",
+        "/auth/login" => "/auth/login",
+        "/auth/callback" => "/auth/callback",
+        "/auth/logout" => "/auth/logout",
+        "/auth/logout/identity" => "/auth/logout/identity",
+        "/auth/logout/callback" => "/auth/logout/callback",
+        _ if path.starts_with("/v1/accounts/") => "/v1/accounts/{owner}",
+        _ if path.starts_with("/v1/skills/") && path.contains("/comments") => {
+            "/v1/skills/{owner}/{name}/comments/{id?}"
+        }
+        _ if path.starts_with("/v1/skills/") && path.ends_with("/preview") => {
+            "/v1/skills/{owner}/{name}/preview"
+        }
         _ if path.starts_with("/v1/skills/") && path.ends_with("/archive") => {
             "/v1/skills/{owner}/{name}/archive"
         }
@@ -255,6 +366,12 @@ fn route_name(path: &str) -> &'static str {
 /// Retry durable garbage jobs and bounded orphan sweeps using a platform Cron Trigger.
 #[event(scheduled)]
 pub async fn scheduled(_: ScheduledEvent, env: Env, _: ScheduleContext) {
+    if web_auth::cleanup_expired(&env).await.is_err() {
+        telemetry::log_event(
+            &serde_json::json!({"event":"web_session_cleanup","outcome":"retry_required"}),
+            true,
+        );
+    }
     match storage::collect_garbage(&env).await {
         Ok(deleted) => telemetry::log_event(
             &serde_json::json!({"event":"garbage_collection","deleted":deleted,"outcome":"success"}),
