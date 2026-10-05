@@ -187,3 +187,31 @@ No schema, registration, secret setup or full native journey was unnecessarily
 repeated. Focused rendered early-tap, late-session, mobile dialogs and preference
 persistence checks were handed to the existing validator. Production remains held.
 Snapshot: `.temp/web-registration/ux-built-artifact.json`.
+
+## Production promotion and rendered closure
+
+After the real staged two-account journeys and focused UX regression passed,
+[Actions run 37293207461](https://github.com/kleedaisuki/moesegfault-mskill/actions/runs/37293207461)
+promoted source `b8d0ef2` on 2026-10-05. The final push skipped redundant automatic
+staging execution; explicit production dispatch still ran all native/Worker gates.
+Linux completed in40s, Windows in1m45s, the full Worker journey in1m17s, and tested
+artifact deployment in23s. All four jobs passed.
+
+The production deployment applied `0003_web_workspace.sql`, reused the uploaded
+artifact without recompiling, and registered both actual custom domains. Worker
+version is `d2169396-74bd-425a-bce1-8ecf8504d682`; upload was1863.46KiB/gzip636.69KiB,
+and platform-reported startup3ms. These are deployment metrics, not request latency.
+
+Independent developer-machine public smoke passed both hosts, three product
+languages, all discovery guides, trace-preserving health/catalog and anonymous
+management denial. The actual distributed v0.1.0 Windows CLI also read the
+production catalog successfully without changing its native configuration.
+
+The real browser validator then used the reusable read-only harness on production:
+22 screenshots, both hosts in all three languages and desktop/mobile themes,
+system appearance responding to OSmedia changes, real download CTA with client
+SHA-256 verification, actual workspace navigation and public discovery requests
+all passed. No production sign-in or test data was created. Staging disposable
+packages/comments were removed and app/provider sessions closed. Exact results,
+profile-specific download failure/control and remaining optional stress scope are
+in `web-journeys.md`; `web-acceptance.md` records the full requirement audit.
